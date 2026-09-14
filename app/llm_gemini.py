@@ -113,7 +113,11 @@ class GeminiClient:
         Retries raise the last raw exception; the caller maps it once.
         """
         use_json_mode = json_mode
-        max_attempts = self._settings.llm_max_retries + 1
+        # Cap total wall time: retries only make sense while the caller is
+        # still waiting. The frontend aborts at 45s, so a budget of ~3x the
+        # per-attempt timeout bounds us to ~2 attempts at 30s each.
+        retry_budget = max(1, int(90 // max(self._settings.llm_timeout_seconds, 1)))
+        max_attempts = min(self._settings.llm_max_retries + 1, retry_budget)
         attempt = 0
         while True:
             try:
@@ -131,7 +135,7 @@ class GeminiClient:
                 delay = min(1.5 * (2 ** (attempt - 1)), 6.0)
                 logger.warning(
                     "Gemini transient error (%s), retry %d/%d in %.1fs",
-                    type(exc).__name__, attempt, self._settings.llm_max_retries, delay,
+                    type(exc).__name__, attempt, max_attempts, delay,
                 )
                 await _sleep(delay)
 

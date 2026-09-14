@@ -23,9 +23,12 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
     gemini_api_key: str = ""
-    # NOTE: gemini-1.5-flash was retired by Google; 'gemini-flash-latest' always
-    # tracks the current flash model. Override GEMINI_MODEL to pin a version.
-    gemini_model: str = "gemini-flash-latest"
+    # NOTE: gemini-1.5-flash was retired by Google. 'gemini-flash-lite-latest'
+    # tracks the current *lite* flash model — deliberately chosen over
+    # 'gemini-flash-latest' because the full flash model has thinking mode,
+    # which can exceed 30s+ on reasoning prompts (math, multi-step logic) and
+    # hit our client timeout. Override GEMINI_MODEL to pin any other version.
+    gemini_model: str = "gemini-flash-lite-latest"
     llm_model: str = "gpt-4o-mini"
     llm_temperature: float = 0.2
     llm_max_tokens: int = 800

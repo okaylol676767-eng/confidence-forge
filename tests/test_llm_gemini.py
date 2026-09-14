@@ -219,6 +219,19 @@ async def test_retries_exhausted_maps_to_timeout(monkeypatch):
     assert len(model.calls) == 2  # initial + 1 retry
 
 
+async def test_retry_budget_never_exceeds_caller_wall_time(monkeypatch):
+    """The frontend aborts at 45s; retries must not outlive a 3x budget."""
+    monkeypatch.setattr("app.llm_gemini._sleep", _noop_sleep)
+    model = FakeModel(response=FakeResponse(text=GOOD_JSON))
+    model.exc_sequence = [gexc().DeadlineExceeded("slow")]
+    # llm_timeout_seconds=45 -> budget = 90//45 = 2 attempts, so llm_max_retries=5 is capped.
+    with pytest.raises(LLMTimeoutError):
+        await client_with(model, llm_max_retries=5, llm_timeout_seconds=45).complete(
+            [{"role": "user", "content": "hi"}]
+        )
+    assert len(model.calls) == 2  # capped by wall-time budget, not by max_retries
+
+
 async def test_non_transient_errors_are_not_retried(monkeypatch):
     monkeypatch.setattr("app.llm_gemini._sleep", _noop_sleep)
     model = FakeModel(response=FakeResponse(text=GOOD_JSON))

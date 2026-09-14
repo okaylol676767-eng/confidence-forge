@@ -45,7 +45,7 @@ The key is loaded from `.env` via `python-dotenv` — never commit it (`.env` is
 |---|---|---|
 | `LLM_PROVIDER` | `gemini` | `gemini` or `openai` |
 | `GEMINI_API_KEY` | — | Google AI Studio key (get one at aistudio.google.com) |
-| `GEMINI_MODEL` | `gemini-flash-latest` | Model name — see note below |
+| `GEMINI_MODEL` | `gemini-flash-lite-latest` | Model name — see note below |
 | `OPENAI_API_KEY` | — | Key for any OpenAI-compatible provider |
 | `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Groq, Ollama, vLLM, … |
 | `LLM_MODEL` | `gpt-4o-mini` | Model name (OpenAI provider) |
@@ -60,8 +60,10 @@ The key is loaded from `.env` via `python-dotenv` — never commit it (`.env` is
 | `NEXT_PUBLIC_API_ORIGIN` | `http://127.0.0.1:8000` | Backend origin the Next.js proxy targets (rebuild after changing) |
 
 > **Model note:** `gemini-1.5-flash` has been retired by Google (404 on the v1beta endpoint).
-> The default is `gemini-flash-latest`, an alias that always tracks the current flash model.
-> Pin a specific version with `GEMINI_MODEL=gemini-2.0-flash` (or similar) if you prefer.
+> The default is `gemini-flash-lite-latest`, an alias that always tracks the current *lite* flash
+> model — fast, cheap, and no "thinking" phase. Avoid `gemini-flash-latest` for this chat
+> contract: its thinking mode routinely exceeds 30s on math/reasoning prompts and hits the
+> request timeout. Pin any specific version with `GEMINI_MODEL=<name>` if you prefer.
 
 ## API
 

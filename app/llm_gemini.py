@@ -254,16 +254,48 @@ class GeminiClient:
 
     @staticmethod
     def _build_content(prompt: str, attachments: list[Attachment] | None) -> Any:
-        """Prompt string alone, or a multi-part content list with inline files."""
+        """Prompt string alone, or a multi-part content list with inline files.
+
+        PDF strategy: when the server extracted a text layer, send ONLY the
+        text — shipping the binary alongside it makes the model fixate on the
+        undecodable compressed streams and claim the document is unreadable
+        (observed live on gemini-flash-lite). When extraction failed (scans,
+        image-only PDFs), send the raw binary so native parsing can still
+        try (it can OCR or read pages the text layer missed).
+        """
         if not attachments:
             return prompt
         parts: list[Any] = []
+        doc_texts: list[str] = []
         for attachment in attachments:
+            if (
+                attachment.mime_type == "application/pdf"
+                and attachment.extracted_text
+            ):
+                doc_texts.append(
+                    f"Document: {attachment.filename}\n"
+                    f"--- BEGIN EXTRACTED TEXT ---\n"
+                    f"{attachment.extracted_text}\n"
+                    f"--- END EXTRACTED TEXT ---"
+                )
+                continue  # text layer replaces the binary entirely
             parts.append({
                 "inline_data": {
                     "mime_type": attachment.mime_type,
                     "data": base64.b64encode(attachment.data).decode("ascii"),
                 }
+            })
+        if doc_texts:
+            logger.info(
+                "pdf text-mode: %d doc(s) as text, binary dropped", len(doc_texts)
+            )
+            parts.append({
+                "text": (
+                    "The user attached the following PDF document(s). Their "
+                    "complete extracted text content follows. Treat this text "
+                    "as the document itself and answer questions from it.\n\n"
+                    + "\n\n".join(doc_texts)
+                )
             })
         parts.append(prompt)
         return parts

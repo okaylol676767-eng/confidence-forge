@@ -151,10 +151,16 @@ class LLMClient:
                     },
                 })
             else:
-                try:
-                    doc_text = attachment.data.decode("utf-8")
-                except UnicodeDecodeError:
-                    doc_text = "(binary or non-UTF-8 document; content omitted)"
+                if (
+                    attachment.mime_type == "application/pdf"
+                    and attachment.extracted_text
+                ):
+                    doc_text = attachment.extracted_text
+                else:
+                    try:
+                        doc_text = attachment.data.decode("utf-8")
+                    except UnicodeDecodeError:
+                        doc_text = "(binary or non-UTF-8 document; content omitted)"
                 parts.append({
                     "type": "text",
                     "text": f"[Attached document: {attachment.filename} ({attachment.mime_type})]\n{doc_text}",

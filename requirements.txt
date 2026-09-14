@@ -8,3 +8,4 @@ openai>=1.60.0
 google-generativeai>=0.8.0
 python-dotenv>=1.0.0
 python-multipart>=0.0.20  # multipart/form-data parsing for file uploads
+pypdf>=6.0.0  # server-side PDF text extraction (Gemini fallback + OpenAI doc path)

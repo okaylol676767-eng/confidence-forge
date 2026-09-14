@@ -15,9 +15,9 @@ from .attachments import Attachment
 from .config import get_logger, get_settings
 from .consistency import consistency_solve, looks_quantitative
 from .database import get_session  # noqa: F401  (re-exported for routers)
-from .errors import DatabaseError
+from .errors import DatabaseError, NotFoundError
 from .llm_factory import build_llm_client
-from .models import Interaction
+from .models import ChatSession, Interaction
 from .prompts import PromptManager, prompt_manager
 from .schemas import (
     AttachmentMeta,
@@ -25,6 +25,7 @@ from .schemas import (
     ChatResponse,
     ConversationHistoryResponse,
     ConversationMessage,
+    SessionOut,
     StatsSummaryResponse,
     StructuredAnswer,
 )
@@ -176,10 +177,12 @@ async def save_interaction(
             latency_ms=latency_ms,
             prompt_version=prompt_version,
             attachments=json.dumps([m.model_dump() for m in attachment_meta(attachments)]),
+            detailed_solution=structured.detailed_solution,
         )
         session.add(row)
         await session.commit()
         await session.refresh(row)
+        await ensure_session_row(session, conversation_id)
         return row
     except SQLAlchemyError:
         await session.rollback()
@@ -220,6 +223,7 @@ def _assistant_message_from(row: Interaction) -> ConversationMessage:
         confidence=row.confidence,
         confidence_reason=row.confidence_reason,
         uncertainty_factors=parse_factors(row.uncertainty_factors),
+        detailed_solution=row.detailed_solution,
         created_at=row.created_at,
         prompt_version=row.prompt_version,
         latency_ms=row.latency_ms,
@@ -295,3 +299,101 @@ async def get_stats_summary(session: AsyncSession) -> StatsSummaryResponse:
     except SQLAlchemyError:
         logger.exception("DB error while computing stats summary")
         raise DatabaseError("Failed to compute stats.") from None
+
+
+# ---------- Sessions (named conversations) ----------
+
+DEFAULT_SESSION_NAME = "New chat"
+# Derive a readable default name from the first question (UI can rename later).
+_FIRST_QUESTION_MAX = 60
+
+
+async def ensure_session_row(session: AsyncSession, conversation_id: str) -> None:
+    """Create the session row lazily on a conversation's first message.
+
+    Default name comes from the conversation's first user question, trimmed to
+    a readable length — better than "New chat" for the sidebar, and the user
+    can always rename via PATCH /sessions/{id}.
+    """
+    try:
+        existing = await session.get(ChatSession, conversation_id)
+        if existing is not None:
+            return
+        first = await session.scalar(
+            select(Interaction.user_message)
+            .where(Interaction.conversation_id == conversation_id)
+            .order_by(Interaction.id.asc())
+            .limit(1)
+        )
+        name = DEFAULT_SESSION_NAME
+        if first:
+            cleaned = " ".join(first.split())
+            name = (
+                cleaned[:_FIRST_QUESTION_MAX] + "…"
+                if len(cleaned) > _FIRST_QUESTION_MAX
+                else cleaned
+            )
+        session.add(ChatSession(conversation_id=conversation_id, name=name))
+        await session.commit()
+        logger.info("session created conversation=%s name=%.60s", conversation_id, name)
+    except SQLAlchemyError:
+        await session.rollback()
+        # Session bookkeeping must never break a chat response.
+        logger.exception("Failed to ensure session row (conversation=%s)", conversation_id)
+
+
+async def list_sessions(session: AsyncSession, limit: int = 100) -> list[SessionOut]:
+    """Most-recently-active sessions first, with per-session message counts."""
+    try:
+        rows = (await session.execute(
+            select(ChatSession)
+            .order_by(ChatSession.updated_at.desc())
+            .limit(limit)
+        )).scalars().all()
+        counts = dict((await session.execute(
+            select(
+                Interaction.conversation_id,
+                func.count().label("n"),
+            ).group_by(Interaction.conversation_id)
+        )).all())
+        return [
+            SessionOut(
+                conversation_id=row.conversation_id,
+                name=row.name,
+                message_count=int(counts.get(row.conversation_id, 0)),
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+            )
+            for row in rows
+        ]
+    except SQLAlchemyError:
+        logger.exception("DB error while listing sessions")
+        raise DatabaseError("Failed to list sessions.") from None
+
+
+async def rename_session(
+    session: AsyncSession, conversation_id: str, name: str
+) -> SessionOut:
+    """Rename a session; 404 when the conversation doesn't exist."""
+    try:
+        row = await session.get(ChatSession, conversation_id)
+        if row is None:
+            raise NotFoundError(f"No session found with id '{conversation_id}'.")
+        row.name = name
+        await session.commit()
+        await session.refresh(row)
+        count = await session.scalar(
+            select(func.count()).select_from(Interaction)
+            .where(Interaction.conversation_id == conversation_id)
+        ) or 0
+        return SessionOut(
+            conversation_id=row.conversation_id,
+            name=row.name,
+            message_count=int(count),
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+    except SQLAlchemyError:
+        await session.rollback()
+        logger.exception("DB error while renaming session (conversation=%s)", conversation_id)
+        raise DatabaseError("Failed to rename the session.") from None

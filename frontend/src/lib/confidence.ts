@@ -36,8 +36,12 @@ export function getConfidence(meta?: ChatMeta | null): number | null {
 
 export function getTier(confidence: number | null): ConfidenceTier | null {
   if (confidence === null) return null;
-  if (confidence > 0.8) return "high";
-  if (confidence >= 0.5) return "medium";
+  // Bands match the model's calibrated scale (prompt v2): 0.95+ is
+  // arithmetic-level certainty, 0.80-0.92 is a routine textbook result,
+  // <0.60 means real doubt. Anything can still self-correct via the
+  // vote: agreement is folded into the reported number downstream.
+  if (confidence >= 0.93) return "high";
+  if (confidence >= 0.6) return "medium";
   return "low";
 }
 

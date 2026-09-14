@@ -43,6 +43,10 @@ async def seed_prompts() -> None:
     versions (created_by='improve') are never touched.
     """
     existing = {row.version for row in await prompt_manager.list_versions()}
+    # Fresh DB: seed all baselines, activate the default. Existing DB: refresh
+    # each baseline's text in place AND insert any baseline that is missing
+    # (e.g. v2 added after the DB was created) so prompt upgrades ship without
+    # manual migration. /improve-derived versions are never touched.
     if not existing:
         for index, (version, text) in enumerate(BASELINE_VERSIONS.items()):
             await prompt_manager.save(
@@ -54,12 +58,44 @@ async def seed_prompts() -> None:
             )
         logger.info("Seeded baseline prompt versions %s", list(BASELINE_VERSIONS))
     else:
+        missing = [v for v in BASELINE_VERSIONS if v not in existing]
+        active_version = await prompt_manager.get_active_version()
+        for version in missing:
+            # Upgrade rule: a missing DEFAULT baseline replaces an older
+            # BASELINE as active (that is the prompt upgrade shipping). An
+            # /improve-derived active version stays untouched.
+            should_activate = (
+                version == DEFAULT_PROMPT_VERSION
+                and (active_version is None or active_version in BASELINE_VERSIONS)
+            )
+            await prompt_manager.save(
+                version=version,
+                system_prompt=BASELINE_VERSIONS[version],
+                created_by="seed",
+                parent_version=None,
+                activate=should_activate,
+            )
         for version, text in BASELINE_VERSIONS.items():
-            await prompt_manager.update_text(version, text)
+            if version in existing:
+                await prompt_manager.update_text(version, text)
         active_version = await prompt_manager.get_active_version()
         if active_version is None:
             await prompt_manager.activate(DEFAULT_PROMPT_VERSION)
-        logger.info("Baseline prompt versions refreshed: %s", sorted(existing | set(BASELINE_VERSIONS)))
+        elif active_version in BASELINE_VERSIONS and active_version != DEFAULT_PROMPT_VERSION:
+            # The default baseline is newer than the active one (e.g. DB
+            # created before v2 existed): upgrade the activation so prompt
+            # improvements actually ship. /improve-derived versions win and
+            # are never switched away from.
+            await prompt_manager.activate(DEFAULT_PROMPT_VERSION)
+            logger.info(
+                "Active baseline upgraded %s -> %s",
+                active_version, DEFAULT_PROMPT_VERSION,
+            )
+        logger.info(
+            "Baseline prompt versions refreshed: %s%s",
+            sorted(existing | set(BASELINE_VERSIONS)),
+            f" (inserted missing: {missing})" if missing else "",
+        )
 
 
 def error_response(status_code: int, message: str, code: str) -> JSONResponse:
@@ -136,11 +172,13 @@ def create_app() -> FastAPI:
     # Routers
     from .routers.chat import router as chat_router
     from .routers.conversations import router as conversations_router
+    from .routers.sessions import router as sessions_router
     from .routers.stats import router as stats_router
     from .routers.prompts import router as prompts_router
 
     app.include_router(chat_router)
     app.include_router(conversations_router)
+    app.include_router(sessions_router)
     app.include_router(stats_router)
     app.include_router(prompts_router)
 

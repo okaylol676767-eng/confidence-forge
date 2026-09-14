@@ -177,9 +177,15 @@ def validate_structured_answer(data: dict[str, Any]) -> StructuredAnswer:
         factors = []
     if not isinstance(factors, list) or not all(isinstance(f, str) for f in factors):
         raise LLMInvalidOutputError("'uncertainty_factors' must be an array of strings.")
+    # Optional full derivation. Models omit it, send null, or occasionally
+    # send an empty string — all normalize to None so the UI hides the expander.
+    detailed = data.get("detailed_solution")
+    if not isinstance(detailed, str) or not detailed.strip():
+        detailed = None
     return StructuredAnswer(
         answer=data["answer"].strip(),
         confidence=round(confidence, 4),
         confidence_reason=reason.strip(),
         uncertainty_factors=[f.strip() for f in factors if f.strip()],
+        detailed_solution=detailed,
     )

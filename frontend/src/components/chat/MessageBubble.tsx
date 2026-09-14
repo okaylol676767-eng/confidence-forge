@@ -20,6 +20,7 @@ import {
   ThumbUpIcon,
 } from "../icons";
 import { MarkdownContent } from "./MarkdownContent";
+import { DetailedSolution } from "./DetailedSolution";
 
 const TIME_FMT = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
@@ -110,8 +111,14 @@ export function MessageBubble({ message, onRetry, onOpenStats }: BubbleProps) {
           ) : isUser ? (
             <p className="whitespace-pre-wrap break-words">{message.content}</p>
           ) : (
-            /* Assistant: markdown + LaTeX math ($...$, $$...$$) via KaTeX. */
-            <MarkdownContent content={message.content} />
+            <>
+              {/* Assistant: markdown + LaTeX math ($...$, $$...$$) via KaTeX. */}
+              <MarkdownContent content={message.content} />
+              {/* Full derivation, collapsed by default ("See detailed solution"). */}
+              {!isPending && (
+                <DetailedSolution content={message.meta?.detailed_solution} />
+              )}
+            </>
           )}
 
           {isFailed && (

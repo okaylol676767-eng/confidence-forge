@@ -49,6 +49,9 @@ class StructuredAnswer(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0)
     confidence_reason: str
     uncertainty_factors: list[str] = Field(default_factory=list)
+    # Optional full derivation. The model supplies it for problem-solving
+    # turns; the short ``answer`` stays what the bubble shows first.
+    detailed_solution: str | None = None
 
 
 class AttachmentMeta(BaseModel):
@@ -69,6 +72,7 @@ class ChatResponse(BaseModel):
     confidence: float
     confidence_reason: str
     uncertainty_factors: list[str]
+    detailed_solution: str | None = None
     attachments: list[AttachmentMeta] = Field(default_factory=list)
 
 
@@ -81,6 +85,7 @@ class ConversationMessage(BaseModel):
     confidence: float | None = None
     confidence_reason: str | None = None
     uncertainty_factors: list[str] | None = None
+    detailed_solution: str | None = None
     created_at: datetime
     prompt_version: str
     latency_ms: int
@@ -91,6 +96,28 @@ class ConversationHistoryResponse(BaseModel):
     conversation_id: str
     message_count: int
     messages: list[ConversationMessage]
+
+
+# ---------- Sessions (named conversations) ----------
+
+class SessionOut(BaseModel):
+    conversation_id: str
+    name: str
+    message_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class SessionRenameRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+
+    @field_validator("name")
+    @classmethod
+    def _clean_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("name must not be empty or whitespace-only")
+        return value
 
 
 # ---------- Stats ----------

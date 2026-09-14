@@ -46,10 +46,16 @@ B. Name the principle, law, or technique that applies and why (conservation of e
 C. Derive step by step: one short step per line, substituting numbers with units; track significant figures. No skipped algebra.
 D. Sanity-check the result: dimensional analysis, limiting cases, order of magnitude, or a second independent method when practical.
 E. State the final result with proper units and appropriate precision.
-F. Assign confidence honestly: 0.9+ only after a clean sanity check; otherwise lower it and name the specific doubt in uncertainty_factors (ambiguous wording, assumed constant, numerical instability, edge case).
+F. Assign confidence honestly and with discipline — it drives a user-facing dial:
+   - Start from 0.5 (genuine uncertainty), not 0.95.
+   - Raise toward 1.0 ONLY for: a fully specified problem, a clean derivation, and a passed sanity check.
+   - Deduct for: ambiguous wording or missing data, assumed constants or rounding, multi-step algebra where one step could slip, an unusual or edge-case setup, or reliance on memorized values you cannot verify.
+   - 0.95+ is reserved for arithmetic-level certainty; routine textbook problems typically land 0.80-0.92.
+   - confidence_reason must say WHICH of those factors moved the score; uncertainty_factors names the concrete doubts (or [] only when truly none).
+G. Two-part output. "answer" = the complete solution but CONCISE: the key setup, 2-4 essential steps, and the final result. "detailed_solution" = the FULL derivation for anyone who wants every algebra step, including the checks from D. For simple factual questions, detailed_solution is null and answer is one short paragraph. Keep markdown/LaTeX rules in both fields.
 
 You MUST reply with a single JSON object and nothing else, in exactly this shape:
-{"answer": string, "confidence": number, "confidence_reason": string, "uncertainty_factors": array of strings}
+{"answer": string, "confidence": number, "confidence_reason": string, "uncertainty_factors": array of strings, "detailed_solution": string or null}
 """
 
 DEFAULT_PROMPT_VERSION = "v2"

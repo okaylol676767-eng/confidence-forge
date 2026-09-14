@@ -63,3 +63,9 @@ async def _add_missing_columns(conn) -> None:
         ))
     except Exception:
         pass  # Column already exists — the normal case after the first run.
+    try:
+        await conn.execute(text(
+            "ALTER TABLE interactions ADD COLUMN detailed_solution TEXT"
+        ))
+    except Exception:
+        pass  # Column already exists — the normal case after the first run.

@@ -28,35 +28,9 @@ from .errors import (
 
 logger = get_logger("llm")
 
-def validate_structured_answer(data: dict[str, Any]) -> StructuredAnswer:
-    """Validate the raw parsed JSON into a StructuredAnswer; raises LLMInvalidOutputError."""
-    missing = [field for field in ("answer", "confidence", "confidence_reason") if field not in data]
-    if missing:
-        raise LLMInvalidOutputError(f"LLM JSON is missing required fields: {', '.join(missing)}")
-    if not isinstance(data["answer"], str) or not data["answer"].strip():
-        raise LLMInvalidOutputError("'answer' must be a non-empty string.")
-    try:
-        confidence = float(data["confidence"])
-    except (TypeError, ValueError) as exc:
-        raise LLMInvalidOutputError("'confidence' must be a number between 0 and 1.") from exc
-    if not 0.0 <= confidence <= 1.0:
-        raise LLMInvalidOutputError(f"'confidence' out of range: {confidence}")
-    reason = data["confidence_reason"]
-    if not isinstance(reason, str) or not reason.strip():
-        raise LLMInvalidOutputError("'confidence_reason' must be a non-empty string.")
-
-    factors = data.get("uncertainty_factors", [])
-    if factors is None:
-        factors = []
-    if not isinstance(factors, list) or not all(isinstance(f, str) for f in factors):
-        raise LLMInvalidOutputError("'uncertainty_factors' must be an array of strings.")
-
-    return StructuredAnswer(
-        answer=data["answer"].strip(),
-        confidence=round(confidence, 4),
-        confidence_reason=reason.strip(),
-        uncertainty_factors=[f.strip() for f in factors if f.strip()],
-    )
+# Single source of truth for JSON validation lives in llm_json; re-exported
+# here because services and tests have always imported it from this module.
+from .llm_json import validate_structured_answer  # noqa: E402,F401
 
 
 class LLMClient:

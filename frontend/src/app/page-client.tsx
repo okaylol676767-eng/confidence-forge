@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { Message, StatsData } from "@/lib/types";
-import { friendlyError, sendChatMessage } from "@/lib/api";
+import { fetchSessions, friendlyError, renameSession, sendChatMessage } from "@/lib/api";
 import { AmbientBackground } from "@/components/AmbientBackground";
 import { VideoBackground } from "@/components/VideoBackground";
 import { RobotStage } from "@/components/RobotStage";
@@ -16,6 +16,7 @@ import { Toaster, toast } from "@/components/ui/toast";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 
 const CONVERSATION_KEY = "cf:conversation-id";
+const SESSION_NAME_KEY = "cf:session-name";
 
 function uid(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -41,6 +42,23 @@ function saveConversationId(id: string | null): void {
   }
 }
 
+function loadSessionName(): string | null {
+  try {
+    return window.localStorage.getItem(SESSION_NAME_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function saveSessionName(name: string | null): void {
+  try {
+    if (name) window.localStorage.setItem(SESSION_NAME_KEY, name);
+    else window.localStorage.removeItem(SESSION_NAME_KEY);
+  } catch {
+    /* private mode — non-fatal */
+  }
+}
+
 export default function HomeClient({
   robotSlot,
 }: {
@@ -57,10 +75,15 @@ export default function HomeClient({
 
   const conversationIdRef = useRef<string | null>(null);
   const busyRef = useRef(false);
+  const [sessionName, setSessionName] = useState<string | null>(null);
+  const sessionNameRef = useRef<string | null>(null);
+  /** True once the backend has a session row for the current conversation. */
+  const [sessionActive, setSessionActive] = useState(false);
 
-  // Restore conversation id after mount (client-only storage).
+  // Restore conversation id + last-known session name after mount.
   useEffect(() => {
     conversationIdRef.current = loadConversationId();
+    setSessionName(loadSessionName());
   }, []);
 
   // Persist conversation id whenever it changes.
@@ -123,6 +146,24 @@ export default function HomeClient({
         );
         if (result.meta.conversation_id) {
           setConversationId(result.meta.conversation_id);
+          // The backend auto-creates a session row on the first message and
+          // names it after the question. Fetch that server-assigned name once
+          // per conversation so the header shows it (renamable).
+          if (!sessionNameRef.current) {
+            const convo = result.meta.conversation_id;
+            void (async () => {
+              const sessions = await fetchSessions();
+              const match = sessions.find((s) => s.conversation_id === convo);
+              if (match) {
+                sessionNameRef.current = match.name;
+                setSessionName(match.name);
+                saveSessionName(match.name);
+              }
+              setSessionActive(true);
+            })();
+          } else {
+            setSessionActive(true);
+          }
         }
       } catch (error) {
         const friendly = friendlyError(error);
@@ -161,6 +202,38 @@ export default function HomeClient({
     setActiveStats(message.meta ?? null);
     setStatsOpen(true);
   }, []);
+
+  /** Rename the current session on the backend and in the header. */
+  const handleRenameSession = useCallback(
+    (name: string) => {
+      const convo = conversationIdRef.current;
+      if (!convo) return;
+      void (async () => {
+        try {
+          const updated = await renameSession(convo, name);
+          const finalName = updated?.name ?? name;
+          sessionNameRef.current = finalName;
+          setSessionName(finalName);
+          saveSessionName(finalName);
+        } catch (error) {
+          toast("error", friendlyError(error));
+        }
+      })();
+    },
+    [],
+  );
+
+  /** Fresh conversation: clear messages + identity; session becomes "New chat". */
+  const handleNewChat = useCallback(() => {
+    if (busyRef.current) return;
+    setMessages([]);
+    setConversationId(null);
+    conversationIdRef.current = null;
+    sessionNameRef.current = null;
+    setSessionName(null);
+    setSessionActive(false);
+    saveSessionName(null);
+  }, [setConversationId]);
 
   /** "How it works" doubles as a live demo of the transparency panel. */
   const handleHowItWorks = useCallback(() => {
@@ -236,6 +309,10 @@ export default function HomeClient({
                 onOpenStats={handleOpenStats}
                 onSuggestion={(text) => void sendMessage(text)}
                 onClose={handleCloseChat}
+                sessionName={sessionName}
+                sessionActive={sessionActive}
+                onRenameSession={handleRenameSession}
+                onNewChat={handleNewChat}
               />
             </motion.div>
           </motion.div>

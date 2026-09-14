@@ -8,6 +8,8 @@ export interface ChatMeta {
   timestamp?: string | null;
   /** Backend-measured wall time of the model call + persistence, in ms. */
   latency_ms?: number | null;
+  /** Full derivation when the model produced one (See detailed solution). */
+  detailed_solution?: string | null;
   /** Files attached to this turn (echoed by the backend). */
   attachments?: AttachmentMeta[] | null;
 }
@@ -39,3 +41,12 @@ export interface Message {
 
 /** Subset of meta the stats modal cares about. */
 export type StatsData = ChatMeta;
+
+/** One named conversation from the backend's /sessions API. */
+export interface SessionInfo {
+  conversation_id: string;
+  name: string;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+}

@@ -30,6 +30,21 @@ class Interaction(Base):
     prompt_version: Mapped[str] = mapped_column(String(32), default="v1", index=True)
     # JSON list of {filename, mime_type, size_bytes, kind}; "[]" when none.
     attachments: Mapped[str] = mapped_column(Text, default="[]")
+    # Optional full derivation for problem-solving turns ("See detailed solution").
+    detailed_solution: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class ChatSession(Base):
+    """A named conversation. Created lazily on the first message; renamable."""
+
+    __tablename__ = "chat_sessions"
+
+    conversation_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), default="New chat")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now, index=True
+    )
 
 
 class PromptVersion(Base):

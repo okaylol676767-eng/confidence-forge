@@ -1,4 +1,4 @@
-import type { AttachmentMeta, ChatMeta } from "./types";
+import type { AttachmentMeta, ChatMeta, SessionInfo } from "./types";
 import { normalizeConfidence } from "./confidence";
 
 /**
@@ -87,6 +87,10 @@ function extractReply(payload: unknown): { content: string; meta: ChatMeta } | n
     typeof obj.latency_ms === "number"
       ? obj.latency_ms
       : (metaLike.latency_ms as unknown);
+  const detailedRaw =
+    typeof obj.detailed_solution === "string"
+      ? obj.detailed_solution
+      : (metaLike.detailed_solution as unknown);
   const meta: ChatMeta = {
     confidence: normalizeConfidence(metaLike.confidence),
     confidence_reason:
@@ -99,6 +103,10 @@ function extractReply(payload: unknown): { content: string; meta: ChatMeta } | n
     latency_ms:
       typeof latencyRaw === "number" && Number.isFinite(latencyRaw) && latencyRaw >= 0
         ? latencyRaw
+        : null,
+    detailed_solution:
+      typeof detailedRaw === "string" && detailedRaw.trim().length > 0
+        ? detailedRaw
         : null,
     conversation_id:
       typeof obj.conversation_id === "string"
@@ -138,6 +146,54 @@ function extractAttachments(payload: unknown): AttachmentMeta[] {
 export interface ChatSuccess {
   content: string;
   meta: ChatMeta;
+}
+
+// ---------- Sessions (named conversations) ----------
+
+/** GET /sessions — most-recently-active named conversations. */
+export async function fetchSessions(): Promise<SessionInfo[]> {
+  const res = await fetch("/sessions").catch(() => null);
+  if (!res || !res.ok) return [];
+  const body: unknown = await res.json().catch(() => null);
+  if (!Array.isArray(body)) return [];
+  return body.filter(
+    (item): item is SessionInfo =>
+      item !== null &&
+      typeof item === "object" &&
+      typeof (item as Record<string, unknown>).conversation_id === "string" &&
+      typeof (item as Record<string, unknown>).name === "string",
+  );
+}
+
+/** PATCH /sessions/{id} — rename a conversation. Throws ApiError on failure. */
+export async function renameSession(
+  conversationId: string,
+  name: string,
+): Promise<SessionInfo | null> {
+  let res: Response;
+  try {
+    res = await fetch(`/sessions/${encodeURIComponent(conversationId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+  } catch {
+    throw new ApiError(FRIENDLY_ERRORS.network, "network");
+  }
+  if (!res.ok) {
+    const detail = await backendDetail(res);
+    throw new ApiError(detail ?? FRIENDLY_ERRORS.server, inferCode(res.status));
+  }
+  const body: unknown = await res.json().catch(() => null);
+  if (body === null || typeof body !== "object") return null;
+  const obj = body as Record<string, unknown>;
+  return {
+    conversation_id: String(obj.conversation_id ?? conversationId),
+    name: String(obj.name ?? name),
+    message_count: typeof obj.message_count === "number" ? obj.message_count : 0,
+    created_at: String(obj.created_at ?? ""),
+    updated_at: String(obj.updated_at ?? ""),
+  };
 }
 
 /**

@@ -20,13 +20,16 @@ settings = get_settings()
 # QUESTION_SIGNALS: heuristics that mark a message as quantitative/STEM.
 QUESTION_SIGNALS = re.compile(
     r"(?is)\b("
-    r"solve|calculate|compute|evaluate|derive|find\s+(the|x|v|t|a|ph)|prove|show\s+that|"
-    r"integral|derivative|differential|equation|matrix|vector|probability|limit|sum\b|"
+    r"solve|calculate|compute|evaluate|derive|prove|show\s+that|"
+    r"find\s+\S+|how\s+(fast|much|many|long|far|deep|high)|"
+    r"integral|integrat|derivative|differentiate|equation|matrix|vector|probability|limit|sum\b|"
     r"velocity|accelerat|force|energy|momentum|moment|tension|friction|projectile|"
     r"wave|frequency|wavelength|current|voltage|resistance|circuit|charge|magnetic|"
     r"mol(?:e|ar|arity)?\b|concentration|pH\b|stoichi|reaction|titration|enthalpy|entropy|"
     r"oxidation|reduction|mole\b|grams?\b|litres?|liters?|pressure|volume|temperature|"
-    r"balance.{0,20}(equation)|half[- ]life|kinetics|equilibrium"
+    r"balance.{0,20}(equation)|half[- ]life|kinetics|equilibrium|"
+    r"area|perimeter|circumference|radius|diameter|hypotenuse|angle|slope|"
+    r"distance|speed|mass|weight|density|percent(?:age)?|ratio|average|mean\b|median"
     r")"
 )
 
@@ -152,6 +155,7 @@ def pick_winner(samples: list[StructuredAnswer]) -> VoteResult:
                 else f"All {len(valid)} independent solutions agreed."
             ),
             uncertainty_factors=factors,
+            detailed_solution=winner_sample.detailed_solution,
         ),
         samples=len(valid),
         agreement=agreement,

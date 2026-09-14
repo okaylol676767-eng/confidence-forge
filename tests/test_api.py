@@ -15,7 +15,7 @@ def test_chat_returns_structured_response(client, fake_llm):
     assert body["confidence_reason"] == "Well-known fact."
     assert body["uncertainty_factors"] == []
     assert body["conversation_id"].startswith("c-")
-    assert body["prompt_version"] == "v1"
+    assert body["prompt_version"] == "v2"
     assert body["latency_ms"] >= 0
     assert isinstance(body["interaction_id"], int)
 
@@ -92,7 +92,7 @@ def test_conversation_history_returns_messages(client):
     second = body["messages"][1]
     assert second["confidence"] == pytest.approx(0.95)
     assert second["confidence_reason"] == "Well-known fact."
-    assert second["prompt_version"] == "v1"
+    assert second["prompt_version"] == "v2"
     assert second["latency_ms"] >= 0
 
 
@@ -126,7 +126,7 @@ def test_stats_summary_counts_low_confidence(client, fake_llm):
     assert body["total_interactions"] == 2
     assert body["low_confidence_count"] == 1
     assert body["average_confidence"] == pytest.approx((0.42 + 0.9) / 2, abs=1e-3)
-    v1 = body["by_prompt_version"]["v1"]
+    v1 = body["by_prompt_version"]["v2"]
     assert v1["count"] == 2
     assert v1["low_confidence_count"] == 1
 
@@ -142,20 +142,20 @@ def test_improve_creates_and_activates_new_version(client, fake_llm):
     fake_llm.confidence = 0.3
     client.post("/chat", json={"message": "Hard question", "conversation_id": "c-imp"})
 
-    fake_llm.response = "v2 system prompt with clearer instructions and explicit uncertainty reporting rules."
+    fake_llm.response = "v3 system prompt with clearer instructions and explicit uncertainty reporting rules."
     resp = client.post("/improve", json={"activate": True})
     assert resp.status_code == 200
     body = resp.json()
-    assert body["new_version"]["version"] == "v2"
+    assert body["new_version"]["version"] == "v3"
     assert body["new_version"]["is_active"] is True
-    assert body["new_version"]["parent_version"] == "v1"
+    assert body["new_version"]["parent_version"] == "v2"
     assert body["analyzed_interactions"] == 1
     assert body["average_confidence_of_sample"] == pytest.approx(0.3)
 
     # The new version is now active: next chat uses it.
     fake_llm.response = None
     resp2 = client.post("/chat", json={"message": "Another question"})
-    assert resp2.json()["prompt_version"] == "v2"
+    assert resp2.json()["prompt_version"] == "v3"
 
 
 def test_improve_with_activate_false_does_not_switch(client, fake_llm):
@@ -169,7 +169,7 @@ def test_improve_with_activate_false_does_not_switch(client, fake_llm):
 
     fake_llm.response = None
     resp2 = client.post("/chat", json={"message": "Next"})
-    assert resp2.json()["prompt_version"] == "v1"
+    assert resp2.json()["prompt_version"] == "v2"
 
 
 def test_prompt_versions_listing(client, fake_llm):
@@ -181,7 +181,7 @@ def test_prompt_versions_listing(client, fake_llm):
     resp = client.get("/prompts/versions")
     assert resp.status_code == 200
     versions = [v["version"] for v in resp.json()]
-    assert versions == ["v1", "v2"]
+    assert versions == ["v1", "v2", "v3"]
 
 
 def test_llm_timeout_maps_to_504(client, fake_llm, monkeypatch):

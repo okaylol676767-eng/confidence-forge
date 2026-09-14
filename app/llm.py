@@ -82,6 +82,7 @@ class LLMClient:
         self,
         messages: list[dict[str, str]],
         attachments: list[Attachment] | None = None,
+        temperature: float | None = None,
     ) -> str:
         """Send chat messages (+ optional file attachments), return raw completion text."""
         client = self._ensure_client()
@@ -100,7 +101,7 @@ class LLMClient:
         kwargs: dict[str, Any] = {
             "model": self._settings.llm_model,
             "messages": outbound_messages,
-            "temperature": self._settings.llm_temperature,
+            "temperature": self._settings.llm_temperature if temperature is None else temperature,
             "max_tokens": self._settings.llm_max_tokens,
         }
         if self._settings.llm_json_mode:
@@ -165,9 +166,10 @@ class LLMClient:
         self,
         messages: list[dict[str, str]],
         attachments: list[Attachment] | None = None,
+        temperature: float | None = None,
     ) -> StructuredAnswer:
         """Full pipeline: complete -> extract JSON -> validate -> StructuredAnswer."""
-        raw = await self.complete(messages, attachments=attachments)
+        raw = await self.complete(messages, attachments=attachments, temperature=temperature)
         logger.debug("LLM raw response (%d chars)", len(raw))
         try:
             data = extract_json_object(raw)

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .attachments import Attachment
 from .config import get_logger, get_settings
+from .consistency import consistency_solve, looks_quantitative
 from .database import get_session  # noqa: F401  (re-exported for routers)
 from .errors import DatabaseError
 from .llm_factory import build_llm_client
@@ -82,7 +83,14 @@ async def handle_chat(
     prompt_version, system_prompt = await prompts.get_active()
 
     messages = build_chat_messages(system_prompt, history, request.message)
-    structured = await llm.chat_structured(messages, attachments=attachments)  # typed LLMError
+
+    # Quantitative questions get self-consistency: N independent solutions +
+    # majority vote, with agreement folded into the reported confidence.
+    if settings.consistency_samples > 1 and looks_quantitative(request.message):
+        vote = await consistency_solve(llm, messages, attachments=attachments)
+        structured = vote.winner
+    else:
+        structured = await llm.chat_structured(messages, attachments=attachments)  # typed LLMError
 
     latency_ms = int((time.perf_counter() - started) * 1000)
 

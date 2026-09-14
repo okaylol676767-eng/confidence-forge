@@ -80,15 +80,16 @@ class GeminiClient:
         messages: list[dict[str, str]],
         json_mode: bool = False,
         attachments: list[Attachment] | None = None,
+        temperature: float | None = None,
     ) -> str:
         """Send a flattened conversation (+ optional file parts), return raw text."""
         model = self._ensure_model()
         prompt = self._flatten(messages)
         content = self._build_content(prompt, attachments)
 
-        def generation_config(use_json_mode: bool) -> dict[str, Any]:
+        def generation_config(use_json_mode: bool, temperature: float | None = None) -> dict[str, Any]:
             config: dict[str, Any] = {
-                "temperature": self._settings.llm_temperature,
+                "temperature": self._settings.llm_temperature if temperature is None else temperature,
                 "max_output_tokens": self._settings.llm_max_tokens,
             }
             if use_json_mode:
@@ -98,7 +99,7 @@ class GeminiClient:
         async def generate(use_json_mode: bool) -> Any:
             return await model.generate_content_async(
                 content,
-                generation_config=generation_config(use_json_mode),
+                generation_config=generation_config(use_json_mode, temperature),
                 request_options={"timeout": self._settings.llm_timeout_seconds},
             )
 
@@ -151,10 +152,14 @@ class GeminiClient:
         self,
         messages: list[dict[str, str]],
         attachments: list[Attachment] | None = None,
+        temperature: float | None = None,
     ) -> StructuredAnswer:
         """Full pipeline: complete -> extract JSON -> validate -> StructuredAnswer."""
         raw = await self.complete(
-            messages, json_mode=self._settings.llm_json_mode, attachments=attachments
+            messages,
+            json_mode=self._settings.llm_json_mode,
+            attachments=attachments,
+            temperature=temperature,
         )
         logger.debug("Gemini raw response (%d chars)", len(raw))
         try:

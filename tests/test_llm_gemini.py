@@ -47,9 +47,17 @@ class FakeModel:
         self.response = response
         self.exc = exc
         self.calls = []
+        # Optional list of exceptions to raise in order; last entry repeats.
+        # A None entry means "succeed and return self.response".
+        self.exc_sequence: list | None = None
 
     async def generate_content_async(self, prompt, generation_config=None, request_options=None):
         self.calls.append((prompt, generation_config or {}))
+        if self.exc_sequence:
+            item = self.exc_sequence.pop(0) if len(self.exc_sequence) > 1 else self.exc_sequence[0]
+            if item is not None:
+                raise item
+            return self.response
         if self.exc:
             raise self.exc
         return self.response
@@ -64,6 +72,10 @@ def client_with(fake_model, **overrides) -> GeminiClient:
 def gexc():
     from google.api_core import exceptions as module
     return module
+
+
+async def _noop_sleep(_seconds: float) -> None:
+    return None
 
 
 # ---------- prompt flattening ----------
@@ -183,3 +195,34 @@ async def test_invalid_argument_json_mode_falls_back():
     assert structured.answer == "Paris"
     assert model.calls[0][1].get("response_mime_type") == "application/json"
     assert "response_mime_type" not in model.calls[1][1]
+
+
+# ---------- transient-failure retries ----------
+
+async def test_transient_timeout_is_retried_and_succeeds(monkeypatch):
+    monkeypatch.setattr("app.llm_gemini._sleep", _noop_sleep)
+    model = FakeModel(response=FakeResponse(text=GOOD_JSON))
+    model.exc_sequence = [gexc().DeadlineExceeded("slow"), None]  # fail once, then succeed
+    structured = await client_with(model, llm_max_retries=2).chat_structured(
+        [{"role": "user", "content": "hi"}]
+    )
+    assert structured.answer == "Paris"
+    assert len(model.calls) == 2  # 1 failure, then a successful retry
+
+
+async def test_retries_exhausted_maps_to_timeout(monkeypatch):
+    monkeypatch.setattr("app.llm_gemini._sleep", _noop_sleep)
+    model = FakeModel(response=FakeResponse(text=GOOD_JSON))
+    model.exc_sequence = [gexc().DeadlineExceeded("slow")]
+    with pytest.raises(LLMTimeoutError):
+        await client_with(model, llm_max_retries=1).complete([{"role": "user", "content": "hi"}])
+    assert len(model.calls) == 2  # initial + 1 retry
+
+
+async def test_non_transient_errors_are_not_retried(monkeypatch):
+    monkeypatch.setattr("app.llm_gemini._sleep", _noop_sleep)
+    model = FakeModel(response=FakeResponse(text=GOOD_JSON))
+    model.exc_sequence = [gexc().InvalidArgument("bad field")]
+    with pytest.raises(LLMBadResponseError):
+        await client_with(model, llm_max_retries=2).complete([{"role": "user", "content": "hi"}])
+    assert len(model.calls) == 1  # no retry for 4xx-style errors

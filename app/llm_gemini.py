@@ -3,6 +3,7 @@
 Isolates all Gemini specifics (SDK quirks, error mapping, JSON-mode retry) so the
 rest of the app only ever sees StructuredAnswer or typed AppErrors.
 """
+from asyncio import sleep as _sleep
 from typing import Any
 
 import google.generativeai as genai
@@ -52,6 +53,17 @@ def _map_gemini_error(exc: Exception) -> LLMError:
     return LLMBadResponseError()
 
 
+def _is_transient(exc: Exception) -> bool:
+    """True for failures worth retrying (rate limits, 5xx, deadline)."""
+    gexc = _gexc()
+    if isinstance(exc, (gexc.DeadlineExceeded, gexc.TooManyRequests,
+                        gexc.ServiceUnavailable, gexc.InternalServerError)):
+        return True
+    # The SDK gave up on its own internal retries; one client-level retry is
+    # still worth trying (its cause was usually a transient status).
+    return isinstance(exc, gexc.RetryError)
+
+
 class GeminiClient:
     """Thin async wrapper over the Gemini API with the shared JSON contract."""
 
@@ -83,20 +95,45 @@ class GeminiClient:
             )
 
         try:
-            response = await generate(json_mode)
+            response = await self._generate_with_retries(
+                model, prompt, json_mode, generation_config, generate,
+            )
         except Exception as exc:
-            gexc = _gexc()
-            # Some Gemini models/endpoints reject response_mime_type; fall back gracefully.
-            if isinstance(exc, gexc.InvalidArgument) and "response_mime_type" in str(exc):
-                logger.warning("Gemini rejected JSON mode; retrying without response_mime_type")
-                try:
-                    response = await generate(False)
-                except Exception as retry_exc:
-                    raise _map_gemini_error(retry_exc) from retry_exc
-            else:
-                raise _map_gemini_error(exc) from exc
+            raise _map_gemini_error(exc) from exc
 
         return self._extract_text(response)
+
+    async def _generate_with_retries(
+        self, model, prompt, json_mode, generation_config, generate,
+    ):
+        """Call Gemini with client-level retries on transient failures.
+
+        Mirrors the OpenAI client (max_retries setting). The JSON-mode
+        response_mime_type fallback switches modes without consuming a retry.
+        Retries raise the last raw exception; the caller maps it once.
+        """
+        use_json_mode = json_mode
+        max_attempts = self._settings.llm_max_retries + 1
+        attempt = 0
+        while True:
+            try:
+                return await generate(use_json_mode)
+            except Exception as exc:
+                gexc = _gexc()
+                if isinstance(exc, gexc.InvalidArgument) and "response_mime_type" in str(exc):
+                    if use_json_mode:
+                        logger.warning("Gemini rejected JSON mode; retrying without response_mime_type")
+                        use_json_mode = False
+                        continue
+                if attempt >= max_attempts - 1 or not _is_transient(exc):
+                    raise
+                attempt += 1
+                delay = min(1.5 * (2 ** (attempt - 1)), 6.0)
+                logger.warning(
+                    "Gemini transient error (%s), retry %d/%d in %.1fs",
+                    type(exc).__name__, attempt, self._settings.llm_max_retries, delay,
+                )
+                await _sleep(delay)
 
     async def chat_structured(self, messages: list[dict[str, str]]) -> StructuredAnswer:
         """Full pipeline: complete -> extract JSON -> validate -> StructuredAnswer."""

@@ -232,6 +232,91 @@ async def test_retry_budget_never_exceeds_caller_wall_time(monkeypatch):
     assert len(model.calls) == 2  # capped by wall-time budget, not by max_retries
 
 
+async def test_truncated_output_retries_with_doubled_cap(monkeypatch):
+    """finish_reason=MAX_TOKENS -> one automatic retry with a doubled budget."""
+    truncated = FakeResponse(text='{"answer": "partial')
+    truncated.candidates = [SimpleNamespace(finish_reason="MAX_TOKENS")]
+    complete = FakeResponse(text=GOOD_JSON)
+    complete.candidates = [SimpleNamespace(finish_reason="STOP")]
+
+    class TruncatingModel:
+        def __init__(self):
+            self.calls = []
+            self.caps = []
+
+        async def generate_content_async(self, prompt, generation_config=None, request_options=None):
+            self.calls.append(prompt)
+            self.caps.append((generation_config or {}).get("max_output_tokens"))
+            return truncated if len(self.calls) == 1 else complete
+
+    model = TruncatingModel()
+    structured = await client_with(model, llm_max_retries=0).chat_structured(
+        [{"role": "user", "content": "hi"}]
+    )
+    assert structured.answer == "Paris"
+    assert len(model.caps) == 2
+    assert model.caps[1] == model.caps[0] * 2  # doubled once
+
+
+async def test_truncation_detected_from_raw_int_finish_reason():
+    """Regression: some SDK versions str() the finish_reason protobuf to '2'.
+
+    Production saw exactly this — MAX_TOKENS arrived as the raw int, the old
+    string check ('MAX_TOKENS' in '2') never fired, and long derivations
+    502'd. The int form must trigger the same doubling retry.
+    """
+    truncated = FakeResponse(text='{"answer": "partial')
+    truncated.candidates = [SimpleNamespace(finish_reason=2)]  # MAX_TOKENS as int
+    complete = FakeResponse(text=GOOD_JSON)
+    complete.candidates = [SimpleNamespace(finish_reason=1)]  # STOP as int
+
+    class IntTruncatingModel:
+        def __init__(self):
+            self.caps = []
+
+        async def generate_content_async(self, prompt, generation_config=None, request_options=None):
+            self.caps.append((generation_config or {}).get("max_output_tokens"))
+            return truncated if len(self.caps) == 1 else complete
+
+    model = IntTruncatingModel()
+    structured = await client_with(model, llm_max_retries=0).chat_structured(
+        [{"role": "user", "content": "hi"}]
+    )
+    assert structured.answer == "Paris"
+    assert model.caps[1] == model.caps[0] * 2
+
+
+async def test_finish_reason_name_mapping():
+    from app.llm_gemini import _finish_reason_name
+
+    assert _finish_reason_name(2) == "MAX_TOKENS"
+    assert _finish_reason_name("2") == "MAX_TOKENS"
+    assert _finish_reason_name("MAX_TOKENS") == "MAX_TOKENS"
+    assert _finish_reason_name(1) == "STOP"
+    assert _finish_reason_name(None) == "none"
+
+
+async def test_truncation_retry_only_happens_once(monkeypatch):
+    truncated = FakeResponse(text='{"answer": "partial')
+    truncated.candidates = [SimpleNamespace(finish_reason="MAX_TOKENS")]
+
+    class AlwaysTruncating:
+        def __init__(self):
+            self.caps = []
+
+        async def generate_content_async(self, prompt, generation_config=None, request_options=None):
+            self.caps.append((generation_config or {}).get("max_output_tokens"))
+            return truncated
+
+    model = AlwaysTruncating()
+    with pytest.raises(LLMInvalidOutputError):
+        await client_with(model, llm_max_retries=0).chat_structured(
+            [{"role": "user", "content": "hi"}]
+        )
+    assert len(model.caps) == 2  # initial + exactly one doubling, no loop
+    assert model.caps[1] == model.caps[0] * 2
+
+
 async def test_non_transient_errors_are_not_retried(monkeypatch):
     monkeypatch.setattr("app.llm_gemini._sleep", _noop_sleep)
     model = FakeModel(response=FakeResponse(text=GOOD_JSON))

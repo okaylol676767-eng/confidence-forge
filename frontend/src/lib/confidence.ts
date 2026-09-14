@@ -54,6 +54,16 @@ export function formatConfidencePct(confidence: number | null): string {
     : `${Math.round(confidence * 100)}%`;
 }
 
+/** Milliseconds -> compact human duration: "2.4s", "38s", "1m 12s"; null if unusable. */
+export function formatElapsed(ms: number | null | undefined): string | null {
+  if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0) return null;
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 10_000) return `${(ms / 1000).toFixed(1)}s`;
+  const totalSeconds = Math.round(ms / 1000);
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  return `${Math.floor(totalSeconds / 60)}m ${totalSeconds % 60}s`;
+}
+
 /** True when a stats payload is present enough to render the full modal. */
 export function hasStatsData(meta?: ChatMeta | null): boolean {
   if (!meta) return false;

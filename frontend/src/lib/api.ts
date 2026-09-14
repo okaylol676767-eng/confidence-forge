@@ -83,6 +83,10 @@ function extractReply(payload: unknown): { content: string; meta: ChatMeta } | n
       : obj;
 
   const factors = metaLike.uncertainty_factors;
+  const latencyRaw =
+    typeof obj.latency_ms === "number"
+      ? obj.latency_ms
+      : (metaLike.latency_ms as unknown);
   const meta: ChatMeta = {
     confidence: normalizeConfidence(metaLike.confidence),
     confidence_reason:
@@ -92,6 +96,10 @@ function extractReply(payload: unknown): { content: string; meta: ChatMeta } | n
     uncertainty_factors: Array.isArray(factors)
       ? factors.filter((f): f is string => typeof f === "string" && f.trim().length > 0)
       : null,
+    latency_ms:
+      typeof latencyRaw === "number" && Number.isFinite(latencyRaw) && latencyRaw >= 0
+        ? latencyRaw
+        : null,
     conversation_id:
       typeof obj.conversation_id === "string"
         ? obj.conversation_id

@@ -51,6 +51,15 @@ class StructuredAnswer(BaseModel):
     uncertainty_factors: list[str] = Field(default_factory=list)
 
 
+class AttachmentMeta(BaseModel):
+    """Metadata about one file attached to a chat turn (content never stored)."""
+
+    filename: str
+    mime_type: str
+    size_bytes: int
+    kind: str  # "image" | "document"
+
+
 class ChatResponse(BaseModel):
     conversation_id: str
     interaction_id: int
@@ -60,6 +69,7 @@ class ChatResponse(BaseModel):
     confidence: float
     confidence_reason: str
     uncertainty_factors: list[str]
+    attachments: list[AttachmentMeta] = Field(default_factory=list)
 
 
 # ---------- Conversation history ----------
@@ -74,6 +84,7 @@ class ConversationMessage(BaseModel):
     created_at: datetime
     prompt_version: str
     latency_ms: int
+    attachments: list[AttachmentMeta] | None = None
 
 
 class ConversationHistoryResponse(BaseModel):

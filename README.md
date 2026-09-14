@@ -2,38 +2,54 @@
 
 An AI chatbot that shows its own confidence after every answer — and actually uses those scores to improve itself over time.
 
-This repository contains the FastAPI backend: every answer comes back as structured JSON with a self-reported `confidence` score, every interaction is logged, and a `/improve` endpoint analyzes low-confidence answers and writes a new, versioned system prompt.
+Every answer comes back as structured JSON with a self-reported `confidence` score, every interaction is logged, and a `/improve` endpoint analyzes low-confidence answers and writes a new, versioned system prompt. A Next.js frontend ("SPIRAL") lives in `frontend/` and talks to this backend.
 
 ## Features
 
 - **Transparent answers** — every response includes `confidence` (0–1), `confidence_reason`, and `uncertainty_factors`.
-- **Forced structured LLM output** — the LLM must return strict JSON; malformed output is caught and mapped to a clean 502 error.
+- **Images & document reading** — attach images, PDFs, or text files in the chat UI (paperclip) or via multipart `POST /chat`; Gemini sees them inline and answers about their content.
+- **Two LLM providers** — Google Gemini (default) or any OpenAI-compatible API, selected by one env var.
+- **Forced structured LLM output** — the LLM must return strict JSON; markdown fences / prose around the JSON are stripped automatically, and unusable output maps to a clean 502.
 - **Full interaction logging** — SQLite (default) or PostgreSQL, with latency, prompt version, and timestamps.
 - **Versioned system prompts** — v1 is seeded on startup; `/improve` writes v2, v3, … and can activate them.
 - **Self-improvement loop** — `/improve` feeds low-confidence answers back to the LLM to rewrite the active prompt.
 - **Consistent error envelope** — every error is `{"error": true, "message": "...", "code": "..."}`; stack traces and secrets never reach the client.
+- **Next.js frontend included** — relative `/chat` fetches are proxied to the backend by a rewrite; no CORS setup needed.
 
-## Quick start
+## Quick start (backend + frontend together)
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate            # Windows: .venv\Scripts\activate
-pip install -r requirements-dev.txt
+.venv\Scripts\python -m pip install -r requirements-dev.txt   # macOS/Linux: source .venv/bin/activate first
 
-cp .env.example .env                 # then set OPENAI_API_KEY (any OpenAI-compatible provider)
-uvicorn app.main:app --reload
+cp .env.example .env                   # then set GEMINI_API_KEY (or OPENAI_API_KEY)
+cd frontend && npm install && cd ..
+
+# one command: backend on :8000, frontend on :3000, proxy wired
+.venv\Scripts\python scripts/dev.py
 ```
 
-- Interactive docs: http://127.0.0.1:8000/docs
-- Health check: http://127.0.0.1:8000/health
+Then open **http://localhost:3000** → Launch → chat. The frontend posts to relative `/chat`, which Next.js proxies to the FastAPI server, so there is no CORS surface at all.
+
+Run them separately if you prefer:
+
+```bash
+.venv\Scripts\python -m uvicorn app.main:app --reload      # API on :8000 (docs at /docs)
+cd frontend && npm run dev                                  # UI on :3000
+```
 
 ## Configuration (env vars / `.env`)
 
+The key is loaded from `.env` via `python-dotenv` — never commit it (`.env` is gitignored).
+
 | Variable | Default | Purpose |
 |---|---|---|
-| `OPENAI_API_KEY` | — | API key for the LLM provider (required for chat) |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Any OpenAI-compatible endpoint (Groq, Ollama, vLLM, …) |
-| `LLM_MODEL` | `gpt-4o-mini` | Model name |
+| `LLM_PROVIDER` | `gemini` | `gemini` or `openai` |
+| `GEMINI_API_KEY` | — | Google AI Studio key (get one at aistudio.google.com) |
+| `GEMINI_MODEL` | `gemini-flash-lite-latest` | Model name — see note below |
+| `OPENAI_API_KEY` | — | Key for any OpenAI-compatible provider |
+| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Groq, Ollama, vLLM, … |
+| `LLM_MODEL` | `gpt-4o-mini` | Model name (OpenAI provider) |
 | `LLM_TEMPERATURE` / `LLM_MAX_TOKENS` | `0.2` / `800` | Generation parameters |
 | `LLM_TIMEOUT_SECONDS` / `LLM_MAX_RETRIES` | `30` / `2` | Request timeout and retry count |
 | `LLM_JSON_MODE` | `true` | Request native JSON mode (disable for picky providers) |
@@ -41,17 +57,38 @@ uvicorn app.main:app --reload
 | `LOW_CONFIDENCE_THRESHOLD` | `0.7` | What counts as "low confidence" |
 | `IMPROVE_SAMPLE_LIMIT` | `200` | Max rows analyzed per `/improve` run |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./confidence_forge.db` | Use `postgresql+asyncpg://...` for PostgreSQL |
-| `CORS_ORIGINS` | localhost dev ports | Comma-separated allowed origins |
+| `CORS_ORIGINS` | localhost dev ports | Comma-separated allowed origins (only needed for non-proxied cross-origin frontends) |
+| `NEXT_PUBLIC_API_ORIGIN` | `http://127.0.0.1:8000` | Backend origin the Next.js proxy targets (rebuild after changing) |
+
+> **Model note:** `gemini-1.5-flash` has been retired by Google (404 on the v1beta endpoint).
+> The default is `gemini-flash-lite-latest`, an alias that always tracks the current *lite* flash
+> model — fast, cheap, and no "thinking" phase. Avoid `gemini-flash-latest` for this chat
+> contract: its thinking mode routinely exceeds 30s on math/reasoning prompts and hits the
+> request timeout. Pin any specific version with `GEMINI_MODEL=<name>` if you prefer.
 
 ## API
 
 ### `POST /chat`
 
+Text-only (JSON):
+
 ```json
 { "message": "What is the capital of France?", "conversation_id": "optional" }
 ```
 
-Response:
+**With attachments** — send `multipart/form-data` with the same fields plus one or more
+`files` parts. Supported: images (png/jpg/webp/heic/heif), PDF, txt, md, csv, json —
+max 4 files, 8 MB each, 16 MB total. Attachment-only sends (empty message) are allowed;
+a default "analyze this file" prompt is supplied. Files are forwarded to Gemini as
+inline parts (vision/document understanding); only their **metadata** is persisted.
+
+```bash
+curl -X POST http://localhost:8000/chat \
+  -F "message=What do you see?" \
+  -F "files=@photo.png;type=image/png"
+```
+
+Response (identical shape; `attachments` echoes file metadata):
 
 ```json
 {
@@ -62,7 +99,10 @@ Response:
   "answer": "Paris is the capital of France.",
   "confidence": 0.98,
   "confidence_reason": "Well-established fact.",
-  "uncertainty_factors": []
+  "uncertainty_factors": [],
+  "attachments": [
+    { "filename": "photo.png", "mime_type": "image/png", "size_bytes": 1234, "kind": "image" }
+  ]
 }
 ```
 
@@ -96,7 +136,7 @@ All errors use one envelope with correct status codes:
 | `LLM_NOT_CONFIGURED` | 503 | Missing API key |
 | `LLM_TIMEOUT` | 504 | Provider too slow |
 | `LLM_RATE_LIMIT` | 429 | Provider rate limit |
-| `LLM_UNAVAILABLE` | 503 | Provider unreachable |
+| `LLM_UNAVAILABLE` | 503 | Provider unreachable (network/DNS) |
 | `LLM_BAD_RESPONSE` / `LLM_INVALID_OUTPUT` | 502 | Unusable/malformed LLM output |
 | `DATABASE_ERROR` | 500 | Persistence failure |
 | `INTERNAL_ERROR` | 500 | Unexpected server error |
@@ -112,29 +152,36 @@ All errors use one envelope with correct status codes:
 ## Tests
 
 ```bash
-.venv/Scripts/python -m pytest -q      # Windows
+.venv\Scripts\python -m pytest -q      # Windows
 python -m pytest -q                    # macOS/Linux
 ```
 
-28 tests cover the chat flow, history, stats, improvement, and every error path (malformed LLM JSON, timeouts, validation, unknown conversations) using a deterministic fake LLM — no API key needed.
+44 tests cover the chat flow, history, stats, improvement, both LLM providers, and every error path (malformed LLM JSON, timeouts, blocked responses, validation, unknown conversations) using deterministic fakes — no API key needed and no network access.
 
-Smoke check without a key: `python scripts/smoke_test.py`
+Offline smoke check (no key required): `python scripts/smoke_test.py`
+Live Gemini check (requires a key in `.env`): `python scripts/live_gemini_check.py`
 
 ## Project layout
 
 ```
 app/
   main.py          # app factory: CORS, exception handlers, lifespan
-  config.py        # env-driven settings
+  config.py        # env-driven settings (python-dotenv)
   schemas.py       # Pydantic request/response models
   errors.py        # typed errors + error codes
   database.py      # async engine/session (SQLite or PostgreSQL)
   models.py        # ORM: interactions, prompt_versions
-  llm.py           # OpenAI-compatible client, strict JSON extraction/validation
+  llm.py           # OpenAI-compatible client
+  llm_gemini.py    # Gemini client (google-generativeai)
+  llm_factory.py   # provider selection from settings
+  llm_json.py      # shared strict-JSON extraction/validation
   prompts.py       # versioned prompt registry (DB-backed)
   services.py      # chat/history/stats business logic
   improve.py       # self-improvement flow
   routers/         # thin HTTP layer
-tests/             # pytest suite (fake LLM)
+frontend/          # Next.js "SPIRAL" UI (proxies API calls via rewrites)
+tests/             # pytest suite (fake LLMs, offline)
+scripts/dev.py     # run backend + frontend together
 scripts/smoke_test.py
+scripts/live_gemini_check.py
 ```

@@ -10,6 +10,8 @@ import pytest
 _TMP_DIR = tempfile.mkdtemp(prefix="confidence_forge_test_")
 DB_PATH = str(Path(_TMP_DIR) / "test.db")
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{DB_PATH}"
+# Keep the suite hermetic: never pick up a real provider/key from .env.
+os.environ["LLM_PROVIDER"] = "openai"
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
 os.environ.setdefault("LLM_JSON_MODE", "false")
 os.environ.setdefault("LLM_MAX_RETRIES", "0")
@@ -31,6 +33,7 @@ class FakeLLM(LLMClient):
         self.confidence = confidence
         self.response = response
         self.calls: list[list[dict]] = []
+        self.attachment_calls: list = []
 
     def _raw(self) -> str:
         if self.response is not None:
@@ -42,13 +45,14 @@ class FakeLLM(LLMClient):
             "uncertainty_factors": [],
         })
 
-    async def complete(self, messages):
+    async def complete(self, messages, attachments=None):
         self.calls.append(messages)
         return self._raw()
 
-    async def chat_structured(self, messages):
+    async def chat_structured(self, messages, attachments=None):
         from app.llm import extract_json_object, validate_structured_answer
         self.calls.append(messages)
+        self.attachment_calls = list(attachments or [])
         data = extract_json_object(self._raw())
         return validate_structured_answer(data)
 

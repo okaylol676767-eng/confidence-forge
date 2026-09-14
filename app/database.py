@@ -45,4 +45,21 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(models.Base.metadata.create_all)
+        await _add_missing_columns(conn)
     logger.info("Database initialised (%s)", _settings.database_url.split("://")[0])
+
+
+async def _add_missing_columns(conn) -> None:
+    """Tiny idempotent migration for columns added after first release.
+
+    create_all only creates missing *tables*, not missing columns on existing
+    tables. SQLite supports ADD COLUMN; PostgreSQL too (non-unique columns).
+    """
+    from sqlalchemy import text
+
+    try:
+        await conn.execute(text(
+            "ALTER TABLE interactions ADD COLUMN attachments TEXT DEFAULT '[]'"
+        ))
+    except Exception:
+        pass  # Column already exists — the normal case after the first run.

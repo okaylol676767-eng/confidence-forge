@@ -1,19 +1,15 @@
 # Freebuff workspace metadata
 .freebuff/
 
-# Python
+# Frontend (Node specifics in frontend/.gitignore)
+
+# Python backend
 __pycache__/
 *.py[cod]
 .venv/
 .pytest_cache/
-
-# Environment / secrets
+*.db
 .env
 
-# Local databases
-*.db
-*.sqlite3
-
-# Node / Next.js (frontend scaffolding)
-node_modules/
-.next/
+# OS
+.DS_Store

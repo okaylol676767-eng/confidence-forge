@@ -9,7 +9,9 @@ import tempfile
 # Isolated temp DB so this never touches the dev database.
 _TMP = tempfile.mkdtemp(prefix="cf_smoke_")
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{_TMP}/smoke.db"
-os.environ.setdefault("OPENAI_API_KEY", "")  # intentionally empty -> LLMNotConfigured path
+# Keep the smoke test offline: force the OpenAI provider with no key -> LLM_NOT_CONFIGURED.
+os.environ["LLM_PROVIDER"] = "openai"
+os.environ["OPENAI_API_KEY"] = ""  # intentionally empty -> LLMNotConfigured path
 
 import json  # noqa: E402
 import sys  # noqa: E402

@@ -185,7 +185,7 @@ def test_prompt_versions_listing(client, fake_llm):
 
 
 def test_llm_timeout_maps_to_504(client, fake_llm, monkeypatch):
-    async def raise_timeout(messages):
+    async def raise_timeout(messages, attachments=None):
         from app.errors import LLMTimeoutError
         raise LLMTimeoutError()
 

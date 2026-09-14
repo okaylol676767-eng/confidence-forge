@@ -18,6 +18,7 @@ import {
   ThumbDownIcon,
   ThumbUpIcon,
 } from "../icons";
+import { MarkdownContent } from "./MarkdownContent";
 
 const TIME_FMT = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
@@ -81,7 +82,14 @@ export function MessageBubble({ message, onRetry, onOpenStats }: BubbleProps) {
               ))}
             </div>
           )}
-          {isPending ? <TypingDots /> : <p className="whitespace-pre-wrap break-words">{message.content}</p>}
+          {isPending ? (
+            <TypingDots />
+          ) : isUser ? (
+            <p className="whitespace-pre-wrap break-words">{message.content}</p>
+          ) : (
+            /* Assistant: markdown + LaTeX math ($...$, $$...$$) via KaTeX. */
+            <MarkdownContent content={message.content} />
+          )}
 
           {isFailed && (
             <div className="mt-2 flex items-center gap-2.5 border-t border-forge-red/25 pt-2">

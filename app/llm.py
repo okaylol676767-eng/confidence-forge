@@ -4,8 +4,6 @@ Pure LLM plumbing: no FastAPI, no DB. Raises typed errors from app.errors so
 routers can map them to the standard JSON envelope.
 """
 import base64
-import json
-import re
 from typing import Any
 
 from openai import (
@@ -16,6 +14,7 @@ from openai import (
 )
 
 from .attachments import Attachment
+from .llm_json import extract_json_object, validate_structured_answer  # noqa: F401 (re-exported)
 from .schemas import StructuredAnswer
 from .config import Settings, get_settings, get_logger
 from .errors import (
@@ -28,46 +27,6 @@ from .errors import (
 )
 
 logger = get_logger("llm")
-
-_JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
-
-
-def extract_json_object(text: str) -> dict[str, Any]:
-    """Pull the first JSON object out of raw model text (handles ```json fences,
-    prose before/after the object, and single quotes / trailing commas)."""
-    candidates: list[str] = []
-
-    for match in _JSON_BLOCK_RE.finditer(text):
-        candidates.append(match.group(1))
-    # First {...} span anywhere in the text, including multi-line.
-    brace_start = text.find("{")
-    if brace_start != -1:
-        candidates.append(text[brace_start: text.rfind("}") + 1])
-
-    for candidate in candidates:
-        candidate = candidate.strip()
-        if not candidate:
-            continue
-        try:
-            parsed = json.loads(candidate)
-            if isinstance(parsed, dict):
-                return parsed
-        except json.JSONDecodeError:
-            continue
-
-    # Last resort: tolerate single quotes and trailing commas.
-    if candidates:
-        relaxed = candidates[0].replace("'", '"').rstrip()
-        relaxed = re.sub(r",\s*([}\]])", r"\1", relaxed)
-        try:
-            parsed = json.loads(relaxed)
-            if isinstance(parsed, dict):
-                return parsed
-        except json.JSONDecodeError:
-            pass
-
-    raise LLMInvalidOutputError("LLM did not return a valid JSON object.")
-
 
 def validate_structured_answer(data: dict[str, Any]) -> StructuredAnswer:
     """Validate the raw parsed JSON into a StructuredAnswer; raises LLMInvalidOutputError."""

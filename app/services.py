@@ -11,6 +11,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .attachments import Attachment
 from .config import get_logger, get_settings
 from .database import get_session  # noqa: F401  (re-exported for routers)
 from .errors import DatabaseError
@@ -18,6 +19,7 @@ from .llm_factory import build_llm_client
 from .models import Interaction
 from .prompts import PromptManager, prompt_manager
 from .schemas import (
+    AttachmentMeta,
     ChatRequest,
     ChatResponse,
     ConversationHistoryResponse,
@@ -63,9 +65,14 @@ def build_chat_messages(
     return messages
 
 
-async def handle_chat(session: AsyncSession, request: ChatRequest) -> ChatResponse:
+async def handle_chat(
+    session: AsyncSession,
+    request: ChatRequest,
+    attachments: list[Attachment] | None = None,
+) -> ChatResponse:
     """Full chat flow: history -> LLM (forced JSON) -> validate -> log -> respond."""
     started = time.perf_counter()
+    attachments = attachments or []
     conversation_id = request.conversation_id or new_conversation_id()
 
     try:
@@ -75,11 +82,13 @@ async def handle_chat(session: AsyncSession, request: ChatRequest) -> ChatRespon
     prompt_version, system_prompt = await prompts.get_active()
 
     messages = build_chat_messages(system_prompt, history, request.message)
-    structured = await llm.chat_structured(messages)  # typed LLMError on failure
+    structured = await llm.chat_structured(messages, attachments=attachments)  # typed LLMError
 
     latency_ms = int((time.perf_counter() - started) * 1000)
 
-    row = await save_interaction(session, conversation_id, request, structured, latency_ms, prompt_version)
+    row = await save_interaction(
+        session, conversation_id, request, structured, latency_ms, prompt_version, attachments
+    )
 
     logger.info(
         "chat conversation=%s latency_ms=%d confidence=%.2f version=%s factors=%d",
@@ -91,6 +100,7 @@ async def handle_chat(session: AsyncSession, request: ChatRequest) -> ChatRespon
         interaction_id=row.id,
         prompt_version=prompt_version,
         latency_ms=latency_ms,
+        attachments=attachment_meta(attachments),
         **structured.model_dump(),
     )
 
@@ -109,6 +119,19 @@ async def fetch_recent_history(session: AsyncSession, conversation_id: str) -> l
         raise DatabaseError("Failed to load the conversation history.") from None
 
 
+def attachment_meta(attachments: list[Attachment]) -> list[AttachmentMeta]:
+    """Public metadata for a validated attachment batch."""
+    return [
+        AttachmentMeta(
+            filename=a.filename,
+            mime_type=a.mime_type,
+            size_bytes=len(a.data),
+            kind="image" if a.is_image else "document",
+        )
+        for a in attachments
+    ]
+
+
 async def save_interaction(
     session: AsyncSession,
     conversation_id: str,
@@ -116,7 +139,9 @@ async def save_interaction(
     structured: StructuredAnswer,
     latency_ms: int,
     prompt_version: str,
+    attachments: list[Attachment] | None = None,
 ) -> Interaction:
+    attachments = attachments or []
     try:
         row = Interaction(
             conversation_id=conversation_id,
@@ -127,6 +152,7 @@ async def save_interaction(
             uncertainty_factors=json.dumps(structured.uncertainty_factors),
             latency_ms=latency_ms,
             prompt_version=prompt_version,
+            attachments=json.dumps([m.model_dump() for m in attachment_meta(attachments)]),
         )
         session.add(row)
         await session.commit()
@@ -138,6 +164,19 @@ async def save_interaction(
         raise DatabaseError("Failed to save the chat interaction.") from None
 
 
+def _attachments_from(row: Interaction) -> list[AttachmentMeta] | None:
+    try:
+        items = json.loads(row.attachments or "[]")
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(items, list) or not items:
+        return None
+    try:
+        return [AttachmentMeta(**item) for item in items]
+    except Exception:
+        return None
+
+
 def _user_message_from(row: Interaction) -> ConversationMessage:
     return ConversationMessage(
         id=row.id,
@@ -146,6 +185,7 @@ def _user_message_from(row: Interaction) -> ConversationMessage:
         created_at=row.created_at,
         prompt_version=row.prompt_version,
         latency_ms=row.latency_ms,
+        attachments=_attachments_from(row),
     )
 
 

@@ -28,6 +28,8 @@ class Interaction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
     prompt_version: Mapped[str] = mapped_column(String(32), default="v1", index=True)
+    # JSON list of {filename, mime_type, size_bytes, kind}; "[]" when none.
+    attachments: Mapped[str] = mapped_column(Text, default="[]")
 
 
 class PromptVersion(Base):

@@ -11,7 +11,7 @@ interface ChatPanelProps {
   fullscreen?: boolean;
   messages: Message[];
   busy: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, files: File[]) => void;
   onRetry: (id: string) => void;
   onOpenStats: (message: Message) => void;
   onSuggestion: (text: string) => void;

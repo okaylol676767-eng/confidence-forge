@@ -3,6 +3,7 @@
 Pure LLM plumbing: no FastAPI, no DB. Raises typed errors from app.errors so
 routers can map them to the standard JSON envelope.
 """
+import base64
 import json
 import re
 from typing import Any
@@ -14,6 +15,7 @@ from openai import (
     RateLimitError,
 )
 
+from .attachments import Attachment
 from .schemas import StructuredAnswer
 from .config import Settings, get_settings, get_logger
 from .errors import (
@@ -117,12 +119,28 @@ class LLMClient:
             )
         return self._client
 
-    async def complete(self, messages: list[dict[str, str]]) -> str:
-        """Send chat messages, return raw completion text; raises typed LLMError."""
+    async def complete(
+        self,
+        messages: list[dict[str, str]],
+        attachments: list[Attachment] | None = None,
+    ) -> str:
+        """Send chat messages (+ optional file attachments), return raw completion text."""
         client = self._ensure_client()
+        outbound_messages: list[dict[str, Any]] = [
+            dict(message) for message in messages
+        ]
+        if attachments:
+            # Only the final user turn carries the files.
+            last_user = next(
+                (m for m in reversed(outbound_messages) if m.get("role") == "user"), None
+            )
+            if last_user is not None:
+                last_user["content"] = self._build_multimodal_content(
+                    str(last_user.get("content", "")), attachments
+                )
         kwargs: dict[str, Any] = {
             "model": self._settings.llm_model,
-            "messages": messages,
+            "messages": outbound_messages,
             "temperature": self._settings.llm_temperature,
             "max_tokens": self._settings.llm_max_tokens,
         }
@@ -157,10 +175,41 @@ class LLMClient:
             raise LLMBadResponseError("LLM returned empty content.")
         return content
 
-    async def chat_structured(self, messages: list[dict[str, str]]) -> StructuredAnswer:
+    @staticmethod
+    def _build_multimodal_content(
+        text: str, attachments: list[Attachment]
+    ) -> list[dict[str, Any]]:
+        """OpenAI vision format: text parts + image_url parts (+ doc text inline)."""
+        parts: list[dict[str, Any]] = []
+        for attachment in attachments:
+            if attachment.is_image:
+                encoded = base64.b64encode(attachment.data).decode("ascii")
+                parts.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:{attachment.mime_type};base64,{encoded}",
+                    },
+                })
+            else:
+                try:
+                    doc_text = attachment.data.decode("utf-8")
+                except UnicodeDecodeError:
+                    doc_text = "(binary or non-UTF-8 document; content omitted)"
+                parts.append({
+                    "type": "text",
+                    "text": f"[Attached document: {attachment.filename} ({attachment.mime_type})]\n{doc_text}",
+                })
+        parts.append({"type": "text", "text": text})
+        return parts
+
+    async def chat_structured(
+        self,
+        messages: list[dict[str, str]],
+        attachments: list[Attachment] | None = None,
+    ) -> StructuredAnswer:
         """Full pipeline: complete -> extract JSON -> validate -> StructuredAnswer."""
-        raw = await self.complete(messages)
-        logger.debug("LLM raw response (%d chars): %.200s", len(raw), raw)  # may contain user content
+        raw = await self.complete(messages, attachments=attachments)
+        logger.debug("LLM raw response (%d chars)", len(raw))
         try:
             data = extract_json_object(raw)
         except LLMInvalidOutputError:

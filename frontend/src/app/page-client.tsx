@@ -71,8 +71,8 @@ export default function HomeClient({
 
   /** Core send flow: append user + pending bubble, call backend, resolve/reject. */
   const sendMessage = useCallback(
-    async (text: string) => {
-      if (busyRef.current || !text.trim()) return;
+    async (text: string, files: File[] = []) => {
+      if (busyRef.current || (!text.trim() && files.length === 0)) return;
       busyRef.current = true;
       setBusy(true);
 
@@ -83,6 +83,12 @@ export default function HomeClient({
         content: text,
         timestamp: now,
         status: "sent",
+        attachments: files.map((file) => ({
+          filename: file.name,
+          mime_type: file.type || "application/octet-stream",
+          size_bytes: file.size,
+          kind: file.type.startsWith("image/") ? ("image" as const) : ("document" as const),
+        })),
       };
       const assistantId = uid();
       const pendingMsg: Message = {
@@ -96,7 +102,12 @@ export default function HomeClient({
       setMessages((prev) => [...prev, userMsg, pendingMsg]);
 
       try {
-        const result = await sendChatMessage(text, conversationIdRef.current);
+        const result = await sendChatMessage(
+          text,
+          conversationIdRef.current,
+          undefined,
+          files.length > 0 ? files : undefined,
+        );
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
@@ -139,7 +150,7 @@ export default function HomeClient({
       if (idx === -1) return;
       const prevMsg = messages[idx - 1];
       const text = prevMsg && prevMsg.role === "user" ? prevMsg.content : "";
-      if (!text.trim()) return;
+      if (!text.trim() && !(prevMsg?.attachments?.length)) return;
       setMessages((prev) => prev.filter((m) => m.id !== id));
       void sendMessage(text);
     },
@@ -220,7 +231,7 @@ export default function HomeClient({
                 fullscreen
                 messages={messages}
                 busy={busy}
-                onSend={(text) => void sendMessage(text)}
+                onSend={(text, files) => void sendMessage(text, files)}
                 onRetry={handleRetry}
                 onOpenStats={handleOpenStats}
                 onSuggestion={(text) => void sendMessage(text)}

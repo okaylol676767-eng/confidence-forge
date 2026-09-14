@@ -3,11 +3,13 @@
 Isolates all Gemini specifics (SDK quirks, error mapping, JSON-mode retry) so the
 rest of the app only ever sees StructuredAnswer or typed AppErrors.
 """
+import base64
 from asyncio import sleep as _sleep
 from typing import Any
 
 import google.generativeai as genai
 
+from .attachments import Attachment
 from .config import Settings, get_logger, get_settings
 from .errors import (
     LLMBadResponseError,
@@ -73,10 +75,16 @@ class GeminiClient:
 
     # ---- public API (mirrors LLMClient) ----
 
-    async def complete(self, messages: list[dict[str, str]], json_mode: bool = False) -> str:
-        """Send a flattened conversation, return raw model text; typed errors on failure."""
+    async def complete(
+        self,
+        messages: list[dict[str, str]],
+        json_mode: bool = False,
+        attachments: list[Attachment] | None = None,
+    ) -> str:
+        """Send a flattened conversation (+ optional file parts), return raw text."""
         model = self._ensure_model()
         prompt = self._flatten(messages)
+        content = self._build_content(prompt, attachments)
 
         def generation_config(use_json_mode: bool) -> dict[str, Any]:
             config: dict[str, Any] = {
@@ -89,7 +97,7 @@ class GeminiClient:
 
         async def generate(use_json_mode: bool) -> Any:
             return await model.generate_content_async(
-                prompt,
+                content,
                 generation_config=generation_config(use_json_mode),
                 request_options={"timeout": self._settings.llm_timeout_seconds},
             )
@@ -139,9 +147,15 @@ class GeminiClient:
                 )
                 await _sleep(delay)
 
-    async def chat_structured(self, messages: list[dict[str, str]]) -> StructuredAnswer:
+    async def chat_structured(
+        self,
+        messages: list[dict[str, str]],
+        attachments: list[Attachment] | None = None,
+    ) -> StructuredAnswer:
         """Full pipeline: complete -> extract JSON -> validate -> StructuredAnswer."""
-        raw = await self.complete(messages, json_mode=self._settings.llm_json_mode)
+        raw = await self.complete(
+            messages, json_mode=self._settings.llm_json_mode, attachments=attachments
+        )
         logger.debug("Gemini raw response (%d chars)", len(raw))
         try:
             data = extract_json_object(raw)
@@ -159,6 +173,22 @@ class GeminiClient:
             genai.configure(api_key=self._settings.gemini_api_key)
             self._model = genai.GenerativeModel(model_name=self._settings.gemini_model)
         return self._model
+
+    @staticmethod
+    def _build_content(prompt: str, attachments: list[Attachment] | None) -> Any:
+        """Prompt string alone, or a multi-part content list with inline files."""
+        if not attachments:
+            return prompt
+        parts: list[Any] = []
+        for attachment in attachments:
+            parts.append({
+                "inline_data": {
+                    "mime_type": attachment.mime_type,
+                    "data": base64.b64encode(attachment.data).decode("ascii"),
+                }
+            })
+        parts.append(prompt)
+        return parts
 
     @staticmethod
     def _flatten(messages: list[dict[str, str]]) -> str:

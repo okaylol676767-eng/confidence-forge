@@ -11,6 +11,7 @@ import {
   TIER_COLORS,
 } from "@/lib/confidence";
 import {
+  AttachIcon,
   ClockIcon,
   RetryIcon,
   StatsIcon,
@@ -65,6 +66,21 @@ export function MessageBubble({ message, onRetry, onOpenStats }: BubbleProps) {
             isFailed ? "border-forge-red/45" : "",
           ].join(" ")}
         >
+          {isUser && message.attachments && message.attachments.length > 0 && (
+            <div className="mb-2 flex flex-wrap justify-end gap-1.5 border-b border-forge-lime/15 pb-2">
+              {message.attachments.map((att, index) => (
+                <span
+                  key={`${att.filename}-${index}`}
+                  className="label-mono inline-flex max-w-[200px] items-center gap-1.5 rounded-full border border-forge-lime/25 bg-forge-lime/[0.06] py-0.5 pl-2 pr-2.5 text-[9px] text-forge-lime/90"
+                  title={`${att.filename} · ${att.mime_type} · ${Math.max(1, Math.round(att.size_bytes / 1024))} KB`}
+                >
+                  <AttachIcon width={10} height={10} className="shrink-0" />
+                  <span className="truncate">{att.filename}</span>
+                  <span className="text-forge-muted/40">{att.kind === "image" ? "img" : "doc"}</span>
+                </span>
+              ))}
+            </div>
+          )}
           {isPending ? <TypingDots /> : <p className="whitespace-pre-wrap break-words">{message.content}</p>}
 
           {isFailed && (

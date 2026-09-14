@@ -33,6 +33,7 @@ class FakeLLM(LLMClient):
         self.confidence = confidence
         self.response = response
         self.calls: list[list[dict]] = []
+        self.attachment_calls: list = []
 
     def _raw(self) -> str:
         if self.response is not None:
@@ -44,13 +45,14 @@ class FakeLLM(LLMClient):
             "uncertainty_factors": [],
         })
 
-    async def complete(self, messages):
+    async def complete(self, messages, attachments=None):
         self.calls.append(messages)
         return self._raw()
 
-    async def chat_structured(self, messages):
+    async def chat_structured(self, messages, attachments=None):
         from app.llm import extract_json_object, validate_structured_answer
         self.calls.append(messages)
+        self.attachment_calls = list(attachments or [])
         data = extract_json_object(self._raw())
         return validate_structured_answer(data)
 

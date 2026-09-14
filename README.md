@@ -7,6 +7,7 @@ Every answer comes back as structured JSON with a self-reported `confidence` sco
 ## Features
 
 - **Transparent answers** — every response includes `confidence` (0–1), `confidence_reason`, and `uncertainty_factors`.
+- **Images & document reading** — attach images, PDFs, or text files in the chat UI (paperclip) or via multipart `POST /chat`; Gemini sees them inline and answers about their content.
 - **Two LLM providers** — Google Gemini (default) or any OpenAI-compatible API, selected by one env var.
 - **Forced structured LLM output** — the LLM must return strict JSON; markdown fences / prose around the JSON are stripped automatically, and unusable output maps to a clean 502.
 - **Full interaction logging** — SQLite (default) or PostgreSQL, with latency, prompt version, and timestamps.
@@ -69,11 +70,25 @@ The key is loaded from `.env` via `python-dotenv` — never commit it (`.env` is
 
 ### `POST /chat`
 
+Text-only (JSON):
+
 ```json
 { "message": "What is the capital of France?", "conversation_id": "optional" }
 ```
 
-Response:
+**With attachments** — send `multipart/form-data` with the same fields plus one or more
+`files` parts. Supported: images (png/jpg/webp/heic/heif), PDF, txt, md, csv, json —
+max 4 files, 8 MB each, 16 MB total. Attachment-only sends (empty message) are allowed;
+a default "analyze this file" prompt is supplied. Files are forwarded to Gemini as
+inline parts (vision/document understanding); only their **metadata** is persisted.
+
+```bash
+curl -X POST http://localhost:8000/chat \
+  -F "message=What do you see?" \
+  -F "files=@photo.png;type=image/png"
+```
+
+Response (identical shape; `attachments` echoes file metadata):
 
 ```json
 {
@@ -84,7 +99,10 @@ Response:
   "answer": "Paris is the capital of France.",
   "confidence": 0.98,
   "confidence_reason": "Well-established fact.",
-  "uncertainty_factors": []
+  "uncertainty_factors": [],
+  "attachments": [
+    { "filename": "photo.png", "mime_type": "image/png", "size_bytes": 1234, "kind": "image" }
+  ]
 }
 ```
 

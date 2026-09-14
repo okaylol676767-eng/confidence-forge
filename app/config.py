@@ -31,9 +31,14 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-flash-lite-latest"
     llm_model: str = "gpt-4o-mini"
     llm_temperature: float = 0.2
-    llm_max_tokens: int = 800
+    llm_max_tokens: int = 4000
     llm_timeout_seconds: float = 30.0
     llm_max_retries: int = 2
+    # Self-consistency: N parallel samples with majority vote on STEM-style
+    # questions (1 disables it). Agreement across samples becomes the reported
+    # confidence, so the transparency contract stays honest.
+    consistency_samples: int = 3
+    consistency_timeout_seconds: float = 55.0  # under the frontend's 45s abort + margin
     # Ask the API for native JSON mode; disable for providers that reject response_format.
     llm_json_mode: bool = True
 

@@ -6,6 +6,8 @@ export interface ChatMeta {
   uncertainty_factors?: string[] | null;
   conversation_id?: string | null;
   timestamp?: string | null;
+  /** Backend-measured wall time of the model call + persistence, in ms. */
+  latency_ms?: number | null;
   /** Files attached to this turn (echoed by the backend). */
   attachments?: AttachmentMeta[] | null;
 }

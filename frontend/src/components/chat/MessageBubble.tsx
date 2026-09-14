@@ -1,10 +1,11 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Message } from "@/lib/types";
 import {
   formatConfidencePct,
+  formatElapsed,
   getConfidence,
   getConfidenceLabel,
   getTier,
@@ -30,6 +31,28 @@ function formatTime(timestamp: string | null): string {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return "";
   return TIME_FMT.format(date);
+}
+
+/** Ticks every 100ms while an assistant reply is generating. */
+function ElapsedTicker() {
+  const [elapsedMs, setElapsedMs] = useState(0);
+  useEffect(() => {
+    const started = Date.now();
+    const timer = window.setInterval(
+      () => setElapsedMs(Date.now() - started),
+      100,
+    );
+    return () => window.clearInterval(timer);
+  }, []);
+  return (
+    <span
+      className="label-mono inline-flex items-center gap-1 text-[9px] tabular-nums text-forge-lime/60"
+      aria-label="Time elapsed"
+    >
+      <ClockIcon width={11} height={11} className="animate-pulse" />
+      {formatElapsed(elapsedMs) ?? "0s"} elapsed
+    </span>
+  );
 }
 
 interface BubbleProps {
@@ -106,8 +129,11 @@ export function MessageBubble({ message, onRetry, onOpenStats }: BubbleProps) {
         </div>
 
         {/* ————— meta row ————— */}
-        {(time || (message.role === "assistant" && message.status === "sent")) && (
+        {(time ||
+          isPending ||
+          (message.role === "assistant" && message.status === "sent")) && (
           <div className={`flex items-center gap-2 px-1 ${isUser ? "flex-row-reverse" : ""}`}>
+            {isPending && <ElapsedTicker />}
             {time && (
               <span className="label-mono inline-flex items-center gap-1 text-[9px] text-forge-muted/40">
                 <ClockIcon width={11} height={11} />
@@ -117,6 +143,19 @@ export function MessageBubble({ message, onRetry, onOpenStats }: BubbleProps) {
 
             {message.role === "assistant" && message.status === "sent" && (
               <>
+                {(() => {
+                  const elapsed = formatElapsed(message.meta?.latency_ms);
+                  return elapsed ? (
+                    <span
+                      className="label-mono inline-flex items-center gap-1 text-[9px] tabular-nums text-forge-muted/45"
+                      title="Backend-measured response time"
+                    >
+                      <ClockIcon width={11} height={11} />
+                      {elapsed}
+                    </span>
+                  ) : null;
+                })()}
+
                 {confidence !== null && tier && tierColor ? (
                   <span
                     className="label-mono inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold"

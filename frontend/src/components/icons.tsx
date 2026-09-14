@@ -97,6 +97,16 @@ export function ClockIcon(props: IconProps) {
   );
 }
 
+export function TimerIcon(props: IconProps) {
+  return (
+    <svg {...base(props)}>
+      <line x1="10" x2="14" y1="2" y2="2" />
+      <line x1="12" x2="15" y1="14" y2="11" />
+      <circle cx="12" cy="14" r="8" />
+    </svg>
+  );
+}
+
 export function CopyIcon(props: IconProps) {
   return (
     <svg {...base(props)}>

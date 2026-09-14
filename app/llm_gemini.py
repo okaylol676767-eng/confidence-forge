@@ -24,6 +24,41 @@ from .schemas import StructuredAnswer
 
 logger = get_logger("llm_gemini")
 
+# Candidate.finish_reason comes back as a protobuf enum whose str() is the raw
+# int on some SDK versions (str(2) == "2") and the name ("MAX_TOKENS") on
+# others. Normalize to the canonical name so MAX_TOKENS detection is reliable.
+_FINISH_REASON_NAMES = {
+    0: "FINISH_REASON_UNSPECIFIED",
+    1: "STOP",
+    2: "MAX_TOKENS",
+    3: "SAFETY",
+    4: "RECITATION",
+    5: "OTHER",
+    6: "BLOCKLIST",
+    7: "PROHIBITED_CONTENT",
+    8: "SPII",
+    9: "MALFORMED_FUNCTION_CALL",
+    10: "BLOCKED",
+}
+
+
+def _finish_reason_name(value: Any) -> str:
+    """Map a finish_reason (int, int-like str, or enum) to its canonical name."""
+    if value is None:
+        return "none"
+    try:
+        int_value = int(value)
+    except (TypeError, ValueError):
+        # Already a name like "MAX_TOKENS" — normalize case and return.
+        return str(value).strip().upper() or "none"
+    try:
+        # Prefer the installed SDK's own enum (source of truth).
+        from google.ai.generativelanguage_v1beta.types import Candidate
+
+        return Candidate.FinishReason(int_value).name
+    except Exception:
+        return _FINISH_REASON_NAMES.get(int_value, f"UNKNOWN_{int_value}")
+
 
 def _gexc():
     """Lazy import of google.api_core.exceptions (dep of google-generativeai)."""
@@ -80,16 +115,26 @@ class GeminiClient:
         messages: list[dict[str, str]],
         json_mode: bool = False,
         attachments: list[Attachment] | None = None,
+        temperature: float | None = None,
+        token_cap_override: int | None = None,
     ) -> str:
-        """Send a flattened conversation (+ optional file parts), return raw text."""
+        """Send a flattened conversation (+ optional file parts), return raw text.
+
+        token_cap_override exists for the internal MAX_TOKENS retry (doubles
+        the output budget once); callers should not pass it.
+        """
         model = self._ensure_model()
         prompt = self._flatten(messages)
         content = self._build_content(prompt, attachments)
 
-        def generation_config(use_json_mode: bool) -> dict[str, Any]:
+        def generation_config(use_json_mode: bool, temperature: float | None = None) -> dict[str, Any]:
             config: dict[str, Any] = {
-                "temperature": self._settings.llm_temperature,
-                "max_output_tokens": self._settings.llm_max_tokens,
+                "temperature": self._settings.llm_temperature if temperature is None else temperature,
+                "max_output_tokens": (
+                    self._settings.llm_max_tokens
+                    if token_cap_override is None
+                    else token_cap_override
+                ),
             }
             if use_json_mode:
                 config["response_mime_type"] = "application/json"
@@ -98,7 +143,7 @@ class GeminiClient:
         async def generate(use_json_mode: bool) -> Any:
             return await model.generate_content_async(
                 content,
-                generation_config=generation_config(use_json_mode),
+                generation_config=generation_config(use_json_mode, temperature),
                 request_options={"timeout": self._settings.llm_timeout_seconds},
             )
 
@@ -108,6 +153,31 @@ class GeminiClient:
             )
         except Exception as exc:
             raise _map_gemini_error(exc) from exc
+
+        # Remember why generation stopped — MAX_TOKENS truncation is the top
+        # suspect when JSON extraction fails on long derivations.
+        candidates = getattr(response, "candidates", None) or []
+        self._last_finish_reason = (
+            _finish_reason_name(getattr(candidates[0], "finish_reason", None))
+            if candidates else "none"
+        )
+
+        # Truncated mid-generation (= MAX_TOKENS): retry once with a doubled
+        # budget. A cut-off JSON document is unparseable, so a bigger cap is
+        # the only fix; one retry keeps latency bounded.
+        if "MAX_TOKENS" in self._last_finish_reason and token_cap_override is None:
+            doubled = self._settings.llm_max_tokens * 2
+            logger.warning(
+                "Gemini output truncated (MAX_TOKENS at %d); retrying once with %d",
+                self._settings.llm_max_tokens, doubled,
+            )
+            return await self.complete(
+                messages,
+                json_mode=json_mode,
+                attachments=attachments,
+                temperature=temperature,
+                token_cap_override=doubled,
+            )
 
         return self._extract_text(response)
 
@@ -151,16 +221,24 @@ class GeminiClient:
         self,
         messages: list[dict[str, str]],
         attachments: list[Attachment] | None = None,
+        temperature: float | None = None,
     ) -> StructuredAnswer:
         """Full pipeline: complete -> extract JSON -> validate -> StructuredAnswer."""
         raw = await self.complete(
-            messages, json_mode=self._settings.llm_json_mode, attachments=attachments
+            messages,
+            json_mode=self._settings.llm_json_mode,
+            attachments=attachments,
+            temperature=temperature,
         )
         logger.debug("Gemini raw response (%d chars)", len(raw))
         try:
             data = extract_json_object(raw)
         except LLMError:
-            logger.error("Could not extract JSON from Gemini output: %.500s", raw)
+            logger.error(
+                "Could not extract JSON from Gemini output (finish_reason=%s, %d chars). "
+                "HEAD: %.300s TAIL: %.300s",
+                getattr(self, "_last_finish_reason", "?"), len(raw), raw, raw[-300:],
+            )
             raise
         return validate_structured_answer(data)
 

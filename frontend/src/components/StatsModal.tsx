@@ -3,9 +3,9 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect } from "react";
 import type { StatsData } from "@/lib/types";
-import { getConfidence, hasStatsData } from "@/lib/confidence";
+import { formatElapsed, getConfidence, hasStatsData } from "@/lib/confidence";
 import { ConfidenceRing } from "./ConfidenceRing";
-import { ClockIcon, CloseIcon, ShieldQuestionIcon } from "./icons";
+import { ClockIcon, CloseIcon, ShieldQuestionIcon, TimerIcon } from "./icons";
 
 interface StatsModalProps {
   open: boolean;
@@ -140,13 +140,27 @@ export function StatsModal({ open, stats, onClose }: StatsModalProps) {
                   )}
                 </div>
 
-                {/* ————— timestamp ————— */}
-                {timestamp && (
-                  <div className="label-mono mt-6 flex items-center gap-2 border-t border-white/10 pt-4 text-[9px] text-forge-muted/50">
-                    <ClockIcon width={13} height={13} />
-                    Generated {timestamp}
-                  </div>
-                )}
+                {/* ————— timestamp + response time ————— */}
+                <div className="label-mono mt-6 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-white/10 pt-4 text-[9px] text-forge-muted/50">
+                  {timestamp && (
+                    <span className="inline-flex items-center gap-2">
+                      <ClockIcon width={13} height={13} />
+                      Generated {timestamp}
+                    </span>
+                  )}
+                  {(() => {
+                    const elapsed = formatElapsed(stats?.latency_ms);
+                    return elapsed ? (
+                      <span
+                        className="inline-flex items-center gap-2"
+                        title="Backend-measured time to produce this answer"
+                      >
+                        <TimerIcon width={13} height={13} />
+                        Time elapsed {elapsed}
+                      </span>
+                    ) : null;
+                  })()}
+                </div>
               </>
             )}
           </motion.div>

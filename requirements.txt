@@ -9,3 +9,4 @@ google-generativeai>=0.8.0
 python-dotenv>=1.0.0
 python-multipart>=0.0.20  # multipart/form-data parsing for file uploads
 pypdf>=6.0.0  # server-side PDF text extraction (Gemini fallback + OpenAI doc path)
+prismtrace-sdk>=0.4.3  # PRISM live tracing of chat turns (optional at runtime; env-driven)

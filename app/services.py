@@ -28,6 +28,7 @@ from .schemas import (
     StatsSummaryResponse,
     StructuredAnswer,
 )
+from .tracing import trace_chat_turn
 
 logger = get_logger("service")
 settings = get_settings()
@@ -96,6 +97,20 @@ async def handle_chat(
 
     row = await save_interaction(
         session, conversation_id, request, structured, latency_ms, prompt_version, attachments
+    )
+
+    # PRISM live tracing: one record per chat turn (fire-and-forget, fail-open).
+    trace_chat_turn(
+        model=settings.llm_model_for_provider,
+        input_messages=messages,
+        answer=structured.answer,
+        latency_ms=latency_ms,
+        conversation_id=conversation_id,
+        interaction_id=str(row.id),
+        confidence=structured.confidence,
+        prompt_version=prompt_version,
+        uncertainty_factors=structured.uncertainty_factors,
+        attachment_count=len(attachments),
     )
 
     logger.info(

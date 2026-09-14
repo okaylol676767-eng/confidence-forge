@@ -14,6 +14,7 @@ from .database import engine, init_db
 from .errors import AppError, DatabaseError, ErrorCode
 from .logging_config import configure_logging
 from .prompts import BASELINE_VERSIONS, DEFAULT_PROMPT_VERSION, prompt_manager
+from .tracing import close_tracing
 
 logger = get_logger("main")
 settings = get_settings()
@@ -29,6 +30,7 @@ async def lifespan(app: FastAPI):
         logger.exception("Startup failed")
         raise
     yield
+    close_tracing()  # flush pending PRISM traces before the process exits
     await engine.dispose()
 
 

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import get_logger, get_settings
 from .errors import DatabaseError, InvalidRequestError, LLMBadResponseError
-from .llm import llm_client
+from .llm_factory import build_llm_client
 from .models import Interaction, PromptVersion
 from .prompts import prompt_manager, validate_version_tag  # noqa: F401
 from .services import parse_factors
@@ -16,6 +16,8 @@ from .schemas import ImproveResponse, PromptVersionOut
 
 logger = get_logger("improve")
 settings = get_settings()
+
+llm_client = build_llm_client()
 
 MAX_EXAMPLES_IN_PROMPT = 15
 

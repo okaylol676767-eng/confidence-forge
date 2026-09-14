@@ -1,0 +1,22 @@
+# Freebuff workspace metadata
+.freebuff/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Environment / secrets
+.env
+
+# Local databases
+*.db
+*.sqlite3
+
+# Node / Next.js (frontend scaffolding)
+node_modules/
+.next/
+
+# TS incremental build cache
+*.tsbuildinfo

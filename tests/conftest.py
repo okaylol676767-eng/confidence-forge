@@ -10,6 +10,8 @@ import pytest
 _TMP_DIR = tempfile.mkdtemp(prefix="confidence_forge_test_")
 DB_PATH = str(Path(_TMP_DIR) / "test.db")
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{DB_PATH}"
+# Keep the suite hermetic: never pick up a real provider/key from .env.
+os.environ["LLM_PROVIDER"] = "openai"
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
 os.environ.setdefault("LLM_JSON_MODE", "false")
 os.environ.setdefault("LLM_MAX_RETRIES", "0")

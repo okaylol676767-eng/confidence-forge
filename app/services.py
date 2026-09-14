@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .config import get_logger, get_settings
 from .database import get_session  # noqa: F401  (re-exported for routers)
 from .errors import DatabaseError
-from .llm import LLMClient, llm_client
+from .llm_factory import build_llm_client
 from .models import Interaction
 from .prompts import PromptManager, prompt_manager
 from .schemas import (
@@ -29,7 +29,7 @@ from .schemas import (
 logger = get_logger("service")
 settings = get_settings()
 
-llm: LLMClient = llm_client
+llm = build_llm_client()  # OpenAI-compatible or Gemini, per LLM_PROVIDER
 prompts: PromptManager = prompt_manager
 
 LOW_CONFIDENCE_THRESHOLD = settings.low_confidence_threshold

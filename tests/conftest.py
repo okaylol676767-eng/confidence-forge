@@ -21,6 +21,9 @@ os.environ["ANSWER_CACHE_ENABLED"] = "false"
 # The skeptic verification pass makes extra LLM calls per turn; disabled for
 # the suite (dedicated tests with stubbed verifiers cover it).
 os.environ["VERIFICATION_ENABLED"] = "false"
+# The self-improvement scheduler runs on a timer; disabled for the suite
+# (dedicated tests exercise the collect/synthesize/store/inject pieces).
+os.environ["SELF_IMPROVE_ENABLED"] = "false"
 
 import app.improve as improve_module  # noqa: E402
 import app.main as main_module  # noqa: E402

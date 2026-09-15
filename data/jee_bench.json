@@ -1,0 +1,275 @@
+{
+  "description": "JEE Mains + Advanced style benchmark for SPIRAL. Verified reference keys; mix of MCQ and numeric-value questions across mechanics, electromagnetism, thermodynamics, optics, modern physics, physical/organic/inorganic chemistry, and mathematics. Graded by scripts/bench_jee.py using app.answer_check.check_answer.",
+  "questions": [
+    {
+      "id": "P01",
+      "subject": "physics",
+      "level": "mains",
+      "type": "mcq",
+      "question": "A ball is thrown vertically upward with velocity 20 m/s. Taking g = 10 m/s\u00b2, the maximum height reached by the ball is: (A) 10 m (B) 20 m (C) 40 m (D) 5 m",
+      "answer": "B",
+      "answer_text": "20 m"
+    },
+    {
+      "id": "P02",
+      "subject": "physics",
+      "level": "mains",
+      "type": "numeric",
+      "question": "A block of mass 2 kg slides on a frictionless surface with speed 6 m/s and comes to rest after compressing a spring (k = 200 N/m). Find the maximum compression of the spring in meters.",
+      "answer": "0.6",
+      "answer_text": "0.6 m"
+    },
+    {
+      "id": "P03",
+      "subject": "physics",
+      "level": "advanced",
+      "type": "numeric",
+      "question": "A projectile is launched at 45\u00b0 above the horizontal with speed 20 m/s. Taking g = 10 m/s\u00b2, find its horizontal range in meters.",
+      "answer": "40",
+      "answer_text": "40 m"
+    },
+    {
+      "id": "P04",
+      "subject": "physics",
+      "level": "advanced",
+      "type": "numeric",
+      "question": "Two resistors of 3 \u03a9 and 6 \u03a9 are connected in parallel across a 12 V battery of negligible internal resistance. Find the total current drawn from the battery in amperes.",
+      "answer": "6",
+      "answer_text": "6 A"
+    },
+    {
+      "id": "P05",
+      "subject": "physics",
+      "level": "advanced",
+      "type": "numeric",
+      "question": "A body of mass 1 kg moving at 4 m/s collides head-on and perfectly inelastically with a stationary body of mass 3 kg. Find the kinetic energy lost in the collision in joules.",
+      "answer": "6",
+      "answer_text": "6 J"
+    },
+    {
+      "id": "P06",
+      "subject": "physics",
+      "level": "mains",
+      "type": "numeric",
+      "question": "Light of wavelength 600 nm falls on a metal with work function 1.0 eV. Find the maximum kinetic energy of emitted photoelectrons in eV. (h c = 1240 eV\u00b7nm)",
+      "answer": "1.07",
+      "answer_text": "about 1.07 eV"
+    },
+    {
+      "id": "P07",
+      "subject": "physics",
+      "level": "advanced",
+      "type": "numeric",
+      "question": "An ideal gas undergoes an isothermal reversible expansion at 300 K, doubling its volume. If the initial pressure is 1 atm and the gas is 1 mole, find the work done BY the gas in L\u00b7atm. (ln 2 \u2248 0.693)",
+      "answer": "14.0",
+      "answer_text": "about 14 L\u00b7atm"
+    },
+    {
+      "id": "P08",
+      "subject": "physics",
+      "level": "mains",
+      "type": "mcq",
+      "question": "A concave mirror of focal length 20 cm forms a real image at 60 cm from the mirror. The object distance is: (A) 30 cm (B) 15 cm (C) 60 cm (D) 12 cm",
+      "answer": "A",
+      "answer_text": "30 cm"
+    },
+    {
+      "id": "P09",
+      "subject": "physics",
+      "level": "advanced",
+      "type": "numeric",
+      "question": "A charged particle (q = 2 \u03bcC, m = 1 mg) enters a uniform magnetic field B = 0.5 T perpendicular to its velocity v = 4 \u00d7 10\u2075 m/s. Find the radius of its circular path in meters.",
+      "answer": "0.4",
+      "answer_text": "0.4 m"
+    },
+    {
+      "id": "P10",
+      "subject": "physics",
+      "level": "mains",
+      "type": "numeric",
+      "question": "A car accelerates uniformly from rest to 30 m/s in 10 s. Find the distance covered in meters.",
+      "answer": "150",
+      "answer_text": "150 m"
+    },
+    {
+      "id": "C01",
+      "subject": "chemistry",
+      "level": "mains",
+      "type": "numeric",
+      "question": "How many moles of KMnO\u2084 are needed to oxidize one mole of Fe\u00b2\u207a to Fe\u00b3\u207a in acidic medium?",
+      "answer": "0.2",
+      "answer_text": "1/5 mole"
+    },
+    {
+      "id": "C02",
+      "subject": "chemistry",
+      "level": "advanced",
+      "type": "mcq",
+      "question": "Which of the following has the highest first ionization enthalpy? (A) Na (B) Mg (C) Al (D) Si",
+      "answer": "D",
+      "answer_text": "Si"
+    },
+    {
+      "id": "C03",
+      "subject": "chemistry",
+      "level": "mains",
+      "type": "numeric",
+      "question": "For a first-order reaction with rate constant k = 6.93 \u00d7 10\u207b\u00b3 s\u207b\u00b9, find the half-life in seconds. (ln 2 \u2248 0.693)",
+      "answer": "100",
+      "answer_text": "100 s"
+    },
+    {
+      "id": "C04",
+      "subject": "chemistry",
+      "level": "advanced",
+      "type": "mcq",
+      "question": "The hybridization of the central atom in XeF\u2084 is: (A) sp\u00b3 (B) sp\u00b3d (C) sp\u00b3d\u00b2 (D) sp\u00b2",
+      "answer": "C",
+      "answer_text": "sp3d2"
+    },
+    {
+      "id": "C05",
+      "subject": "chemistry",
+      "level": "mains",
+      "type": "numeric",
+      "question": "Calculate the pH of a 0.001 M HCl solution (assume complete dissociation).",
+      "answer": "3",
+      "answer_text": "pH 3"
+    },
+    {
+      "id": "C06",
+      "subject": "chemistry",
+      "level": "advanced",
+      "type": "mcq",
+      "question": "Which compound gives a positive iodoform test? (A) Ethanol (B) Methanol (C) Propan-1-ol (D) Benzyl alcohol",
+      "answer": "A",
+      "answer_text": "Ethanol"
+    },
+    {
+      "id": "C07",
+      "subject": "chemistry",
+      "level": "advanced",
+      "type": "numeric",
+      "question": "The number of sigma and pi bonds in benzene respectively are x and y. Find x + y.",
+      "answer": "15",
+      "answer_text": "12 sigma + 3 pi"
+    },
+    {
+      "id": "M01",
+      "subject": "mathematics",
+      "level": "mains",
+      "type": "numeric",
+      "question": "If the sum of the first 20 terms of an arithmetic progression with first term 3 and common difference 4 is S, find S.",
+      "answer": "820",
+      "answer_text": "820"
+    },
+    {
+      "id": "M02",
+      "subject": "mathematics",
+      "level": "advanced",
+      "type": "numeric",
+      "question": "Find the value of sin\u00b2(15\u00b0) + cos\u00b2(75\u00b0).",
+      "answer": "0.5",
+      "answer_text": "1/2"
+    },
+    {
+      "id": "M03",
+      "subject": "mathematics",
+      "level": "mains",
+      "type": "numeric",
+      "question": "The number of ways to arrange the letters of the word \"LEVEL\" is:",
+      "answer": "30",
+      "answer_text": "5!/(2!2!) = 30"
+    },
+    {
+      "id": "M04",
+      "subject": "mathematics",
+      "level": "advanced",
+      "type": "numeric",
+      "question": "If z = 1 + i, find |z\u2074|.",
+      "answer": "4",
+      "answer_text": "4"
+    },
+    {
+      "id": "M05",
+      "subject": "mathematics",
+      "level": "advanced",
+      "type": "numeric",
+      "question": "Find the area (in square units) enclosed by the ellipse x\u00b2/9 + y\u00b2/4 = 1.",
+      "answer": "18.85",
+      "answer_text": "6\u03c0 \u2248 18.85"
+    },
+    {
+      "id": "M06",
+      "subject": "mathematics",
+      "level": "mains",
+      "type": "numeric",
+      "question": "If f(x) = x\u00b3 - 3x\u00b2 + 2, find f'(2).",
+      "answer": "0",
+      "answer_text": "0"
+    },
+    {
+      "id": "M07",
+      "subject": "mathematics",
+      "level": "advanced",
+      "type": "numeric",
+      "question": "A fair die is rolled twice. Find the probability that the sum of the two outcomes is 8. Give your answer as a decimal rounded to 4 places.",
+      "answer": "0.1389",
+      "answer_text": "5/36 \u2248 0.1389"
+    },
+    {
+      "id": "M08",
+      "subject": "mathematics",
+      "level": "advanced",
+      "type": "numeric",
+      "question": "Find the determinant of the 2\u00d72 matrix [[3, 4], [2, 5]].",
+      "answer": "7",
+      "answer_text": "15 - 8 = 7"
+    },
+    {
+      "id": "P11",
+      "subject": "physics",
+      "level": "advanced",
+      "type": "numeric",
+      "question": "A wire of resistance 10 \u03a9 is stretched uniformly to twice its original length. Find its new resistance in ohms.",
+      "answer": "40",
+      "answer_text": "40 \u03a9"
+    },
+    {
+      "id": "P12",
+      "subject": "physics",
+      "level": "mains",
+      "type": "mcq",
+      "question": "Dimensional formula of Planck's constant is: (A) [ML\u00b2T\u207b\u00b2] (B) [ML\u00b2T\u207b\u00b9] (C) [MLT\u207b\u00b2] (D) [ML\u207b\u00b9T\u00b3]",
+      "answer": "B",
+      "answer_text": "[ML^2 T^-1]"
+    },
+    {
+      "id": "C08",
+      "subject": "chemistry",
+      "level": "mains",
+      "type": "numeric",
+      "question": "The molarity of a solution made by dissolving 4 g of NaOH (M = 40 g/mol) in water to make 500 mL of solution is:",
+      "answer": "0.2",
+      "answer_text": "0.2 M"
+    },
+    {
+      "id": "M09",
+      "subject": "mathematics",
+      "level": "advanced",
+      "type": "numeric",
+      "question": "If the roots of x\u00b2 - 5x + 6 = 0 are \u03b1 and \u03b2, find \u03b1\u00b2 + \u03b2\u00b2.",
+      "answer": "13",
+      "answer_text": "13"
+    },
+    {
+      "id": "P13",
+      "subject": "physics",
+      "level": "advanced",
+      "type": "numeric",
+      "question": "A monoatomic ideal gas at temperature 300 K is compressed adiabatically to half its volume. Taking \u03b3 = 5/3, find the final temperature in kelvin (round to nearest integer).",
+      "answer": "476",
+      "answer_text": "300 \u00d7 2^(2/3) \u2248 476 K"
+    }
+  ]
+}

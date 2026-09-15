@@ -53,6 +53,14 @@ class Settings(BaseSettings):
     # per turn (two on disagreement) in exchange for catching wrong answers.
     verification_enabled: bool = True
 
+    # --- Automated self-improvement loop ---
+    # Harvests failure signals (PRISM evaluations, low-confidence answers,
+    # benchmark failures) into durable lessons injected at chat time.
+    self_improve_enabled: bool = True
+    self_improve_interval_seconds: float = Field(default=21600.0, gt=0)  # 6h
+    # Chat-time injection: max learned lessons placed in the system prompt.
+    lessons_in_prompt: int = Field(default=6, ge=0, le=20)
+
     # --- Chat behaviour ---
     max_history_turns: int = 10
     low_confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)

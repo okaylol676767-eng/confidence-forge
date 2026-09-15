@@ -47,6 +47,25 @@ class ChatSession(Base):
     )
 
 
+class ImprovementLesson(Base):
+    """One durable lesson from the automated self-improvement loop.
+
+    Lessons are distilled from failure evidence (PRISM quality evaluations,
+    low-confidence local answers, benchmark failures) and injected into the
+    system prompt at chat time. text_hash dedupes semantically identical
+    lessons across runs.
+    """
+
+    __tablename__ = "improvement_lessons"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    lesson: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(40), default="auto")  # "auto" | "jee-bench" | "manual"
+    text_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+
+
 class PromptVersion(Base):
     """Versioned system prompts so different versions can be compared later."""
 

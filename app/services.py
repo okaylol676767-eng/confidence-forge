@@ -34,6 +34,12 @@ from .answer_cache import answer_cache, cacheable_turn
 from .consistency import is_trivial_arithmetic
 from .schemas import VerificationInfo
 from .verification import verify_and_finalize
+from .self_improve import (
+    fingerprint_lessons,
+    get_active_lessons,
+    select_lessons,
+    system_prompt_with_lessons,
+)
 
 logger = get_logger("service")
 settings = get_settings()
@@ -87,6 +93,12 @@ async def handle_chat(
     except DatabaseError:
         raise
     prompt_version, system_prompt = await prompts.get_active()
+    # Learned lessons (automated self-improvement) are part of the effective
+    # system prompt — injected here so every stage (vote, verification)
+    # answers under the same, improved instructions.
+    active_lessons = await get_active_lessons(session)
+    selected_lessons = select_lessons(active_lessons, request.message)
+    system_prompt = system_prompt_with_lessons(system_prompt, selected_lessons)
 
     # Exact-match answer cache: only context-free turns (no history, no files)
     # may be served or stored, so a hit can never produce a wrong answer.
@@ -99,7 +111,10 @@ async def handle_chat(
             attachment_count=len(attachments),
         )
     ):
-        cache_key = answer_cache.make_key(prompt_version, request.message)
+        cache_key = answer_cache.make_key(
+            prompt_version + "::" + fingerprint_lessons(selected_lessons),
+            request.message,
+        )
         cached = answer_cache.get(cache_key)
         if cached is not None:
             cached_answer, cached_tokens = cached
@@ -134,7 +149,6 @@ async def handle_chat(
             )
 
     messages = build_chat_messages(system_prompt, history, request.message)
-
     # Quantitative questions get self-consistency: N independent solutions +
     # majority vote, with agreement folded into the reported confidence.
     # Trivial one-shot arithmetic skips the vote: a single computation the

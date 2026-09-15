@@ -38,6 +38,14 @@ async def lifespan(app: FastAPI):
             )
         except Exception:
             logger.exception("Answer-cache prewarm failed to start (non-fatal)")
+        # Automated self-improvement loop: periodically harvest failure
+        # signals (PRISM evaluations + low-confidence answers) into lessons.
+        try:
+            from .self_improve import start_self_improve
+
+            app.state.self_improve_task = start_self_improve(services.llm)
+        except Exception:
+            logger.exception("Self-improvement loop failed to start (non-fatal)")
     except Exception:
         logger.exception("Startup failed")
         raise
@@ -45,6 +53,9 @@ async def lifespan(app: FastAPI):
     prewarm_task = getattr(app.state, "prewarm_task", None)
     if prewarm_task is not None and not prewarm_task.done():
         prewarm_task.cancel()
+    improve_task = getattr(app.state, "self_improve_task", None)
+    if improve_task is not None and not improve_task.done():
+        improve_task.cancel()
     close_tracing()  # flush pending PRISM traces before the process exits
     await engine.dispose()
 

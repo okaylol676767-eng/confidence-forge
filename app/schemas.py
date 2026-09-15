@@ -74,6 +74,20 @@ class VerificationInfo(BaseModel):
     detail: str
 
 
+class LessonOut(BaseModel):
+    """One lesson learned by the automated self-improvement loop."""
+
+    id: int
+    lesson: str
+    source: str
+    created_at: datetime
+
+
+class LessonsOut(BaseModel):
+    count: int
+    lessons: list[LessonOut]
+
+
 class ChatResponse(BaseModel):
     conversation_id: str
     interaction_id: int

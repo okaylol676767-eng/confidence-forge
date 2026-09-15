@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     answer_cache_ttl_seconds: float = Field(default=3600.0, gt=0)
     # Answer common questions once at startup so first asks are cache-fast.
     prewarm_enabled: bool = True
+    # Independent verification: a skeptic re-derives every non-trivial answer;
+    # disagreements go to a blind arbitration call. Costs one extra model call
+    # per turn (two on disagreement) in exchange for catching wrong answers.
+    verification_enabled: bool = True
 
     # --- Chat behaviour ---
     max_history_turns: int = 10

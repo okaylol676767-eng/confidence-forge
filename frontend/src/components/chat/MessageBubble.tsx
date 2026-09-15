@@ -163,6 +163,25 @@ export function MessageBubble({ message, onRetry, onOpenStats }: BubbleProps) {
                   ) : null;
                 })()}
 
+                {(() => {
+                  const v = message.meta?.verification;
+                  if (!v || v.verdict === "unavailable") return null;
+                  const verified = v.verdict === "confirmed";
+                  return (
+                    <span
+                      className="label-mono inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold"
+                      style={
+                        verified
+                          ? { color: "#34d399", borderColor: "#34d39955", backgroundColor: "#34d39914" }
+                          : { color: "#fbbf24", borderColor: "#fbbf2455", backgroundColor: "#fbbf2414" }
+                      }
+                      title={v.detail || (verified ? "Independently re-derived and confirmed" : "Corrected by the verification pass")}
+                    >
+                      {verified ? "✓ VERIFIED" : "↻ CORRECTED"}
+                    </span>
+                  );
+                })()}
+
                 {confidence !== null && tier && tierColor ? (
                   <span
                     className="label-mono inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-semibold"

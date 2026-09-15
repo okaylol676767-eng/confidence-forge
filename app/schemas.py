@@ -21,6 +21,10 @@ class ChatRequest(BaseModel):
         examples=["c-7f3a2b"],
         description="Optional; a new one is generated when omitted.",
     )
+    self_verified: bool = Field(
+        default=True,
+        description="Run the independent verification pass on the answer (when enabled server-side).",
+    )
 
     @field_validator("message")
     @classmethod
@@ -63,6 +67,13 @@ class AttachmentMeta(BaseModel):
     kind: str  # "image" | "document"
 
 
+class VerificationInfo(BaseModel):
+    """Transparent record of the independent verification pass."""
+
+    verdict: str  # "confirmed" | "corrected" | "unavailable"
+    detail: str
+
+
 class ChatResponse(BaseModel):
     conversation_id: str
     interaction_id: int
@@ -73,6 +84,7 @@ class ChatResponse(BaseModel):
     confidence_reason: str
     uncertainty_factors: list[str]
     detailed_solution: str | None = None
+    verification: VerificationInfo | None = None
     attachments: list[AttachmentMeta] = Field(default_factory=list)
 
 

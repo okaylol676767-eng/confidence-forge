@@ -18,6 +18,9 @@ os.environ.setdefault("LLM_MAX_RETRIES", "0")
 # Tests assert on per-turn LLM behavior; a cross-test answer cache would leak
 # state between them. Disabled for the suite (dedicated tests cover the cache).
 os.environ["ANSWER_CACHE_ENABLED"] = "false"
+# The skeptic verification pass makes extra LLM calls per turn; disabled for
+# the suite (dedicated tests with stubbed verifiers cover it).
+os.environ["VERIFICATION_ENABLED"] = "false"
 
 import app.improve as improve_module  # noqa: E402
 import app.main as main_module  # noqa: E402
@@ -48,7 +51,7 @@ class FakeLLM(LLMClient):
             "uncertainty_factors": [],
         })
 
-    async def complete(self, messages, attachments=None):
+    async def complete(self, messages, attachments=None, **_kwargs):
         self.calls.append(messages)
         return self._raw()
 

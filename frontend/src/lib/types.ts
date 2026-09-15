@@ -1,4 +1,10 @@
 /** Shape a successful assistant turn from POST /chat is expected to have. */
+/** Independent verification verdict attached to an assistant answer. */
+export interface VerificationInfo {
+  verdict: "confirmed" | "corrected" | "unavailable";
+  detail: string;
+}
+
 export interface ChatMeta {
   /** 0–1 float (also accepts 0–100, normalized internally). */
   confidence?: number | null;
@@ -12,6 +18,8 @@ export interface ChatMeta {
   detailed_solution?: string | null;
   /** Files attached to this turn (echoed by the backend). */
   attachments?: AttachmentMeta[] | null;
+  /** Independent verification pass result (when it ran for this turn). */
+  verification?: VerificationInfo | null;
 }
 
 /** Metadata about one attached file (content is never persisted). */

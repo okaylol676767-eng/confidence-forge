@@ -1,4 +1,4 @@
-import type { AttachmentMeta, ChatMeta, SessionInfo } from "./types";
+import type { AttachmentMeta, ChatMeta, SessionInfo, VerificationInfo } from "./types";
 import { normalizeConfidence } from "./confidence";
 
 /**
@@ -91,6 +91,19 @@ function extractReply(payload: unknown): { content: string; meta: ChatMeta } | n
     typeof obj.detailed_solution === "string"
       ? obj.detailed_solution
       : (metaLike.detailed_solution as unknown);
+  const verificationRaw =
+    obj.verification && typeof obj.verification === "object"
+      ? (obj.verification as Record<string, unknown>)
+      : null;
+  const verificationInfo: VerificationInfo | null =
+    verificationRaw &&
+    typeof verificationRaw.verdict === "string" &&
+    ["confirmed", "corrected", "unavailable"].includes(verificationRaw.verdict)
+      ? {
+          verdict: verificationRaw.verdict as VerificationInfo["verdict"],
+          detail: typeof verificationRaw.detail === "string" ? verificationRaw.detail : "",
+        }
+      : null;
   const meta: ChatMeta = {
     confidence: normalizeConfidence(metaLike.confidence),
     confidence_reason:
@@ -108,6 +121,7 @@ function extractReply(payload: unknown): { content: string; meta: ChatMeta } | n
       typeof detailedRaw === "string" && detailedRaw.trim().length > 0
         ? detailedRaw
         : null,
+    verification: verificationInfo,
     conversation_id:
       typeof obj.conversation_id === "string"
         ? obj.conversation_id

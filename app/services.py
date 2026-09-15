@@ -32,6 +32,8 @@ from .schemas import (
 from .tracing import trace_chat_turn
 from .answer_cache import answer_cache, cacheable_turn
 from .consistency import is_trivial_arithmetic
+from .schemas import VerificationInfo
+from .verification import verify_and_finalize
 
 logger = get_logger("service")
 settings = get_settings()
@@ -149,6 +151,20 @@ async def handle_chat(
         structured = await llm.chat_structured(messages, attachments=attachments)  # typed LLMError
         token_usage = getattr(llm, "last_usage", None)
 
+    # Independent verification: a skeptic re-derives the answer (treating the
+    # draft AND the user's premises as claims to attack); on refutation a
+    # blind arbiter decides between the competing solutions. Fail-open.
+    verification_info: VerificationInfo | None = None
+    if settings.verification_enabled and request.self_verified:
+        verification = await verify_and_finalize(
+            llm, messages, structured, attachments=attachments, draft_tokens=token_usage
+        )
+        structured = verification.answer
+        token_usage = verification.token_usage
+        verification_info = VerificationInfo(
+            verdict=verification.verdict, detail=verification.detail
+        )
+
     latency_ms = int((time.perf_counter() - started) * 1000)
 
     row = await save_interaction(
@@ -187,6 +203,7 @@ async def handle_chat(
         prompt_version=prompt_version,
         latency_ms=latency_ms,
         attachments=attachment_meta(attachments),
+        verification=verification_info,
         **structured.model_dump(),
     )
 

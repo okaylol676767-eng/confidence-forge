@@ -44,6 +44,21 @@ def looks_quantitative(message: str) -> bool:
     return bool(QUESTION_SIGNALS.search(message or ""))
 
 
+# Single-operation arithmetic ("What is 7 x 8?", "15% of 240", "144 / 12"):
+# one deterministic computation the model cannot plausibly disagree with
+# itself on, so the 3-sample vote would triple cost/latency for nothing.
+_TRIVIAL_ARITH_RE = re.compile(
+    r"(?is)^\s*(?:what\s+is\s+|whats\s+|calculate\s+|compute\s+)?"
+    r"[-+]?\d+(?:\.\d+)?\s*(?:[x×*+/÷-]|plus|minus|times|divided\s+by)\s*[-+]?\d+(?:\.\d+)?\s*[?.!]?\s*$"
+    r"|^\s*(?:what\s+is\s+|whats\s+|calculate\s+|compute\s+)?[-+]?\d+(?:\.\d+)?\s*(?:%|percent)\s+of\s+[-+]?\d+(?:\.\d+)?\s*[?.!]?\s*$"
+)
+
+
+def is_trivial_arithmetic(message: str) -> bool:
+    """True for one-shot arithmetic that skips the multi-sample vote."""
+    return bool(_TRIVIAL_ARITH_RE.match((message or "").strip()))
+
+
 def extract_final_answer(text: str) -> str:
     """Pull the final-result line the v2 prompt demands.
 

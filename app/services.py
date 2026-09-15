@@ -31,6 +31,7 @@ from .schemas import (
 )
 from .tracing import trace_chat_turn
 from .answer_cache import answer_cache, cacheable_turn
+from .consistency import is_trivial_arithmetic
 
 logger = get_logger("service")
 settings = get_settings()
@@ -134,7 +135,13 @@ async def handle_chat(
 
     # Quantitative questions get self-consistency: N independent solutions +
     # majority vote, with agreement folded into the reported confidence.
-    if settings.consistency_samples > 1 and looks_quantitative(request.message):
+    # Trivial one-shot arithmetic skips the vote: a single computation the
+    # model cannot meaningfully disagree with itself on (3x latency for 0 info).
+    if (
+        settings.consistency_samples > 1
+        and looks_quantitative(request.message)
+        and not is_trivial_arithmetic(request.message)
+    ):
         vote = await consistency_solve(llm, messages, attachments=attachments)
         structured = vote.winner
         token_usage: tuple[int, int] | None = vote.token_usage

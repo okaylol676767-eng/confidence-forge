@@ -13,6 +13,7 @@ from .config import get_logger, get_settings
 from .database import engine, init_db
 from .errors import AppError, DatabaseError, ErrorCode
 from .logging_config import configure_logging
+from .prewarm import start_prewarm
 from .prompts import BASELINE_VERSIONS, DEFAULT_PROMPT_VERSION, prompt_manager
 from .tracing import close_tracing
 
@@ -26,10 +27,24 @@ async def lifespan(app: FastAPI):
     try:
         await init_db()
         await seed_prompts()
+        # Pre-warm the answer cache with common questions (background task;
+        # answers come from the real model, first user ask is cache-fast).
+        try:
+            from . import services
+
+            prompt_version, system_prompt = await prompt_manager.get_active()
+            app.state.prewarm_task = start_prewarm(
+                services.llm, prompt_version, system_prompt
+            )
+        except Exception:
+            logger.exception("Answer-cache prewarm failed to start (non-fatal)")
     except Exception:
         logger.exception("Startup failed")
         raise
     yield
+    prewarm_task = getattr(app.state, "prewarm_task", None)
+    if prewarm_task is not None and not prewarm_task.done():
+        prewarm_task.cancel()
     close_tracing()  # flush pending PRISM traces before the process exits
     await engine.dispose()
 

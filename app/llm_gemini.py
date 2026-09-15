@@ -19,7 +19,7 @@ from .errors import (
     LLMTimeoutError,
     LLMUnavailableError,
 )
-from .llm_json import extract_json_object, validate_structured_answer
+from .llm_json import chat_structured_repaired, extract_json_object, validate_structured_answer
 from .schemas import StructuredAnswer
 
 logger = get_logger("llm_gemini")
@@ -232,24 +232,33 @@ class GeminiClient:
         attachments: list[Attachment] | None = None,
         temperature: float | None = None,
     ) -> StructuredAnswer:
-        """Full pipeline: complete -> extract JSON -> validate -> StructuredAnswer."""
-        raw = await self.complete(
-            messages,
-            json_mode=self._settings.llm_json_mode,
-            attachments=attachments,
-            temperature=temperature,
-        )
-        logger.debug("Gemini raw response (%d chars)", len(raw))
-        try:
-            data = extract_json_object(raw)
-        except LLMError:
-            logger.error(
-                "Could not extract JSON from Gemini output (finish_reason=%s, %d chars). "
-                "HEAD: %.300s TAIL: %.300s",
-                getattr(self, "_last_finish_reason", "?"), len(raw), raw, raw[-300:],
+        """Full pipeline: complete -> extract JSON -> validate -> repair retry.
+
+        The repair pass is PRISM-recommended: when the model solves the
+        problem but omits/malforms the JSON contract, one targeted retry
+        naming the exact validation failure recovers the turn.
+        """
+
+        async def once(msgs: list[dict[str, str]], **kwargs: Any) -> str:
+            raw = await self.complete(
+                msgs,
+                json_mode=self._settings.llm_json_mode,
+                attachments=attachments,
+                temperature=temperature,
+                **kwargs,
             )
-            raise
-        return validate_structured_answer(data)
+            logger.debug("Gemini raw response (%d chars)", len(raw))
+            return raw
+
+        def check(data: dict[str, Any]) -> StructuredAnswer:
+            return validate_structured_answer(data)
+
+        def repairable(exc: LLMInvalidOutputError) -> bool:
+            # MAX_TOKENS truncation already consumed its doubled-cap retry;
+            # re-asking cannot un-truncate, it only burns two more calls.
+            return "MAX_TOKENS" not in getattr(self, "_last_finish_reason", "")
+
+        return await chat_structured_repaired(once, messages, check, should_repair=repairable)
 
     # ---- internals ----
 
@@ -298,11 +307,15 @@ class GeminiClient:
             logger.info(
                 "pdf text-mode: %d doc(s) as text, binary dropped", len(doc_texts)
             )
+            names = ", ".join(a.filename for a in attachments if a.extracted_text)
             parts.append({
                 "text": (
-                    "The user attached the following PDF document(s). Their "
-                    "complete extracted text content follows. Treat this text "
-                    "as the document itself and answer questions from it.\n\n"
+                    "The user attached the following PDF document(s): "
+                    f"{names}. Their complete extracted text content follows. "
+                    "Treat this text as the document itself and answer questions "
+                    "ONLY from what it actually contains — if the asked information "
+                    "is not present in the extracted text, say so explicitly instead "
+                    "of inventing it.\n\n"
                     + "\n\n".join(doc_texts)
                 )
             })

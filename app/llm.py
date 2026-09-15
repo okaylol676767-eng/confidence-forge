@@ -14,7 +14,11 @@ from openai import (
 )
 
 from .attachments import Attachment
-from .llm_json import extract_json_object, validate_structured_answer  # noqa: F401 (re-exported)
+from .llm_json import (  # re-exported for tests/tools
+    chat_structured_repaired,
+    extract_json_object,
+    validate_structured_answer,
+)  # noqa: F401 (re-exported)
 from .schemas import StructuredAnswer
 from .config import Settings, get_settings, get_logger
 from .errors import (
@@ -60,8 +64,13 @@ class LLMClient:
         messages: list[dict[str, str]],
         attachments: list[Attachment] | None = None,
         temperature: float | None = None,
+        max_tokens_override: int | None = None,
     ) -> str:
-        """Send chat messages (+ optional file attachments), return raw completion text."""
+        """Send chat messages (+ optional file attachments), return raw completion text.
+
+        max_tokens_override exists for the internal MAX_TOKENS retry (doubles
+        the output budget once); callers should not pass it.
+        """
         client = self._ensure_client()
         outbound_messages: list[dict[str, Any]] = [
             dict(message) for message in messages
@@ -79,7 +88,9 @@ class LLMClient:
             "model": self._settings.llm_model,
             "messages": outbound_messages,
             "temperature": self._settings.llm_temperature if temperature is None else temperature,
-            "max_tokens": self._settings.llm_max_tokens,
+            "max_tokens": (
+                self._settings.llm_max_tokens if max_tokens_override is None else max_tokens_override
+            ),
         }
         if self._settings.llm_json_mode:
             kwargs["response_format"] = {"type": "json_object"}
@@ -111,9 +122,26 @@ class LLMClient:
         ) if usage is not None else None
         message = response.choices[0].message
         content = (message.content or "").strip()
+        finish_reason = str(response.choices[0].finish_reason or "")
+        self._last_finish_reason = finish_reason
+
+        # Truncated mid-generation (finish_reason="length"): retry once with a
+        # doubled budget. A cut-off JSON document is unparseable, so a bigger
+        # cap is the only fix; parity with the Gemini client's behavior.
+        if finish_reason == "length" and max_tokens_override is None:
+            doubled = self._settings.llm_max_tokens * 2
+            logger.warning(
+                "LLM output truncated (finish_reason=length at %d tokens); retrying once with %d",
+                self._settings.llm_max_tokens, doubled,
+            )
+            return await self.complete(
+                messages,
+                attachments=attachments,
+                temperature=temperature,
+                max_tokens_override=doubled,
+            )
         if not content:
-            logger.error("LLM response contained empty content (finish_reason=%s)",
-                         response.choices[0].finish_reason)
+            logger.error("LLM response contained empty content (finish_reason=%s)", finish_reason)
             raise LLMBadResponseError("LLM returned empty content.")
         return content
 
@@ -145,7 +173,12 @@ class LLMClient:
                         doc_text = "(binary or non-UTF-8 document; content omitted)"
                 parts.append({
                     "type": "text",
-                    "text": f"[Attached document: {attachment.filename} ({attachment.mime_type})]\n{doc_text}",
+                    "text": (
+                        f"[Attached document: {attachment.filename} ({attachment.mime_type})]\n"
+                        f"File name: {attachment.filename}. Answer ONLY from this document's "
+                        f"actual content below; if the content does not contain what was asked, "
+                        f"say so explicitly instead of inventing it.\n{doc_text}"
+                    ),
                 })
         parts.append({"type": "text", "text": text})
         return parts
@@ -156,15 +189,19 @@ class LLMClient:
         attachments: list[Attachment] | None = None,
         temperature: float | None = None,
     ) -> StructuredAnswer:
-        """Full pipeline: complete -> extract JSON -> validate -> StructuredAnswer."""
-        raw = await self.complete(messages, attachments=attachments, temperature=temperature)
-        logger.debug("LLM raw response (%d chars)", len(raw))
-        try:
-            data = extract_json_object(raw)
-        except LLMInvalidOutputError:
-            logger.error("Could not extract JSON from LLM output: %.500s", raw)
-            raise
-        return validate_structured_answer(data)
+        """Full pipeline: complete -> extract JSON -> validate -> repair retry."""
+
+        async def once(msgs: list[dict[str, str]], **kwargs: Any) -> str:
+            return await self.complete(msgs, attachments=attachments, temperature=temperature)
+
+        def check(data: dict[str, Any]) -> StructuredAnswer:
+            return validate_structured_answer(data)
+
+        def repairable(exc: LLMInvalidOutputError) -> bool:
+            # finish_reason="length" already consumed its doubled-cap retry.
+            return getattr(self, "_last_finish_reason", "") != "length"
+
+        return await chat_structured_repaired(once, messages, check, should_repair=repairable)
 
 
 # Singleton used by the app (overridable in tests).

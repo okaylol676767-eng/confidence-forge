@@ -9,10 +9,14 @@ are repaired before we give up — the output contract matters more than purity.
 """
 import json
 import re
+from collections.abc import Awaitable, Callable
 from typing import Any
 
+from .config import get_logger
 from .errors import LLMInvalidOutputError
 from .schemas import StructuredAnswer
+
+logger = get_logger("llm_json")
 
 _JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 
@@ -189,3 +193,59 @@ def validate_structured_answer(data: dict[str, Any]) -> StructuredAnswer:
         uncertainty_factors=[f.strip() for f in factors if f.strip()],
         detailed_solution=detailed,
     )
+
+
+def repair_instruction(problem: str) -> str:
+    """Targeted retry instruction naming exactly what failed. f-string (not
+    .format) because the body contains literal JSON braces."""
+    return (
+        f"Your previous reply could not be used: {problem}. "
+        "Resend the SAME answer as ONE strict JSON object containing ALL required keys "
+        '("answer", "confidence" (0.0-1.0), "confidence_reason", "uncertainty_factors", '
+        '"detailed_solution" or null). No markdown fences, no prose, no trailing text.'
+    )
+
+
+def _problem_of(exc: LLMInvalidOutputError) -> str:
+    """Human-readable reason string from a validation failure."""
+    return str(exc).rstrip(".")
+
+
+async def chat_structured_repaired(
+    complete_once: Callable[..., Awaitable[str]],
+    messages: list[dict[str, str]],
+    validate: Callable[[dict[str, Any]], StructuredAnswer],
+    should_repair: Callable[[LLMInvalidOutputError], bool] | None = None,
+    **call_kwargs: Any,
+) -> StructuredAnswer:
+    """One model call + one repair retry when the output fails validation.
+
+    PRISM's analysis showed the dominant failure is correct math with missing
+    or malformed JSON metadata. A single targeted retry — telling the model
+    exactly WHAT was wrong — recovers most of those without a second full
+    solve. ``complete_once`` is the client's raw completion callable;
+    ``validate`` raises LLMInvalidOutputError on unusable output.
+    ``should_repair`` may veto the retry (e.g. truncation: a doubled output
+    cap already ran, and a truncated JSON cannot be fixed by re-asking).
+    """
+    raw = await complete_once(messages, **call_kwargs)
+    try:
+        return validate(extract_json_object(raw))
+    except LLMInvalidOutputError as first_error:
+        # NOTE: capture inside the handler — Python deletes the ``as`` name
+        # when the except block ends, so it cannot be referenced after it.
+        problem = _problem_of(first_error)
+        if should_repair is not None and not should_repair(first_error):
+            logger.warning("Output unusable (%s); repair not applicable, raising", problem)
+            raise
+        logger.warning("Structured output failed validation (%s); requesting repair", problem)
+    repair_messages = [
+        *messages,
+        {"role": "user", "content": repair_instruction(problem)},
+    ]
+    raw2 = await complete_once(repair_messages, **call_kwargs)
+    try:
+        return validate(extract_json_object(raw2))
+    except LLMInvalidOutputError:
+        logger.error("Repair attempt also failed validation; original error stands")
+        raise LLMInvalidOutputError(problem) from None

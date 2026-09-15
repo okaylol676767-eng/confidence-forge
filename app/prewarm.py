@@ -41,6 +41,38 @@ DEFAULT_WARM_QUESTIONS: tuple[str, ...] = (
     "State the first law of thermodynamics",
     "What is Hooke's law?",
     "What is the power law of exponents?",
+    # JEE Mains/Advanced starters — high-frequency exam asks, so the first
+    # real ask of each is cache-fast.
+    "State Newton's first law of motion",
+    "State Coulomb's law",
+    "State Faraday's law of electromagnetic induction",
+    "State Lenz's law",
+    "State Kirchhoff's laws",
+    "What is dimensional formula of Planck's constant?",
+    "State the second law of thermodynamics",
+    "State Hess's law of constant heat summation",
+    "State Le Chatelier's principle",
+    "What is Markovnikov's rule?",
+    "State Raoult's law",
+    "What is the ideal gas equation?",
+    "State Bohr's postulates for the hydrogen atom",
+    "What is the de Broglie wavelength formula?",
+    "State the mirror formula",
+    "What is the lens maker's formula?",
+    "State Ampere's circuital law",
+    "State the work-energy theorem",
+    "State Bernoulli's theorem",
+    "What is the formula for time period of a simple pendulum?",
+    "What is the derivative of sin x?",
+    "What is the integral of 1/x?",
+    "What is the formula for the sum of an infinite geometric series?",
+    "State the binomial theorem",
+    "What is the distance formula between two points?",
+    "State De Morgan's laws",
+    "What is the standard deviation formula?",
+    "State the fundamental theorem of calculus",
+    "What is the cross product of two parallel vectors?",
+    "What is the value of sin 30 degrees?",
 )
 
 
@@ -49,12 +81,30 @@ async def prewarm_cache(llm, prompt_version: str, system_prompt: str) -> int:
     if answer_cache is None:
         return 0
     from .services import build_chat_messages
+    from .self_improve import (
+        fingerprint_lessons,
+        get_active_lessons,
+        select_lessons,
+    )
+    from .database import SessionFactory
+
+    # Chat keys include the fingerprint of the lessons selected for the
+    # question; prewarm must build the IDENTICAL key or its entries are
+    # never hit. Same lesson set + same question => same selection.
+    try:
+        async with SessionFactory() as session:
+            active_lessons = await get_active_lessons(session)
+    except Exception:
+        active_lessons = []
 
     warmed = 0
     for question in DEFAULT_WARM_QUESTIONS:
         if not cacheable_turn(message=question, history_count=0, attachment_count=0):
             continue
-        key = answer_cache.make_key(prompt_version, question)
+        key = answer_cache.make_key(
+            prompt_version + "::" + fingerprint_lessons(select_lessons(active_lessons, question)),
+            question,
+        )
         if answer_cache.get(key) is not None:
             continue  # already warm (e.g. restart within TTL)
         try:

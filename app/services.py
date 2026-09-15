@@ -153,10 +153,13 @@ async def handle_chat(
     # majority vote, with agreement folded into the reported confidence.
     # Trivial one-shot arithmetic skips the vote: a single computation the
     # model cannot meaningfully disagree with itself on (3x latency for 0 info).
+    # Attachment turns also skip it: a document/image defines "the problem",
+    # so voting adds a third of the latency for near-zero disagreement info.
     if (
         settings.consistency_samples > 1
         and looks_quantitative(request.message)
         and not is_trivial_arithmetic(request.message)
+        and not attachments
     ):
         vote = await consistency_solve(llm, messages, attachments=attachments)
         structured = vote.winner
@@ -168,8 +171,11 @@ async def handle_chat(
     # Independent verification: a skeptic re-derives the answer (treating the
     # draft AND the user's premises as claims to attack); on refutation a
     # blind arbiter decides between the competing solutions. Fail-open.
+    # Skipped on attachment turns for the same reason as the vote: the source
+    # material is the file, so an independent re-derivation cannot re-read
+    # it anyway — the checker would just re-ask the same single parse.
     verification_info: VerificationInfo | None = None
-    if settings.verification_enabled and request.self_verified:
+    if settings.verification_enabled and request.self_verified and not attachments:
         verification = await verify_and_finalize(
             llm, messages, structured, attachments=attachments, draft_tokens=token_usage
         )
@@ -190,9 +196,26 @@ async def handle_chat(
     # PRISM's content scanner was flagging every trace that carried it as
     # "Blocked" (instruction-like text trips injection/DLP rules). Prompt
     # identity still reaches PRISM via the prompt_version metadata field.
+    # The input is made self-describing for PRISM's evaluator: attachment
+    # turns prepend what the files ARE (their content is not transmitted),
+    # and continued tutoring sessions carry a context line — otherwise a
+    # question like "solve carefully" reads as answering nothing.
+    trace_input: list[dict[str, str]] = [
+        m for m in messages if m["role"] != "system"
+    ]
+    if attachments:
+        described = "[User attached: " + ", ".join(
+            f"{a.filename} ({a.mime_type})" for a in attachments
+        ) + "]"
+        trace_input = [{"role": "user", "content": described}] + trace_input
+    if history:
+        trace_input = [{
+            "role": "user",
+            "content": f"[Tutoring session, turn {len(history) + 1} in this conversation]",
+        }] + trace_input
     trace_chat_turn(
         model=settings.llm_model_for_provider,
-        input_messages=[m for m in messages if m["role"] != "system"],
+        input_messages=trace_input,
         answer=structured.answer,
         latency_ms=latency_ms,
         token_usage=token_usage,

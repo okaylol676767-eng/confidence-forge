@@ -103,6 +103,9 @@ class VoteResult:
     samples: int
     agreement: float  # 0..1, fraction of successful samples backing the winner
     top_answers: list[tuple[str, int]] = field(default_factory=list)
+    # (input_tokens, output_tokens) summed across the successful samples,
+    # for observability. None when the client does not report usage.
+    token_usage: tuple[int, int] | None = None
 
 
 def pick_winner(samples: list[StructuredAnswer]) -> VoteResult:
@@ -178,14 +181,21 @@ async def consistency_solve(
     # stays as configured (Gemini allows temperature with response_mime_type).
     sample_temperature = 0.7
 
+    usage_total = [0, 0]
+
     async def one() -> StructuredAnswer:
         try:
-            return await llm.chat_structured(
+            result = await llm.chat_structured(
                 messages, attachments=attachments, temperature=sample_temperature
             )
         except TypeError:
             # Client without temperature support (test doubles).
-            return await llm.chat_structured(messages, attachments=attachments)
+            result = await llm.chat_structured(messages, attachments=attachments)
+        usage = getattr(llm, "last_usage", None)
+        if usage:
+            usage_total[0] += int(usage[0])
+            usage_total[1] += int(usage[1])
+        return result
 
     tasks = [asyncio.create_task(one()) for _ in range(sample_count)]
     done, pending = await asyncio.wait(tasks, timeout=budget)
@@ -212,4 +222,7 @@ async def consistency_solve(
     logger.info(
         "consistency samples=%d ok=%d failed=%d", sample_count, len(samples), len(errors)
     )
-    return pick_winner(samples)
+    result = pick_winner(samples)
+    if usage_total[0] or usage_total[1]:
+        result.token_usage = (usage_total[0], usage_total[1])
+    return result

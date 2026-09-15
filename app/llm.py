@@ -39,6 +39,9 @@ class LLMClient:
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
         self._client: AsyncOpenAI | None = None
+        # (input_tokens, output_tokens) of the most recent completion, from the
+        # API's usage block. None until a call succeeds; consumed for observability.
+        self.last_usage: tuple[int, int] | None = None
 
     def _ensure_client(self) -> AsyncOpenAI:
         if not self._settings.openai_api_key:
@@ -101,6 +104,11 @@ class LLMClient:
         if not response.choices:
             logger.error("LLM response contained no choices")
             raise LLMBadResponseError("LLM returned no choices.")
+        usage = getattr(response, "usage", None)
+        self.last_usage = (
+            int(getattr(usage, "prompt_tokens", 0) or 0),
+            int(getattr(usage, "completion_tokens", 0) or 0),
+        ) if usage is not None else None
         message = response.choices[0].message
         content = (message.content or "").strip()
         if not content:

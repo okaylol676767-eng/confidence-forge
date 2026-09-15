@@ -107,6 +107,9 @@ class GeminiClient:
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
         self._model: Any = None
+        # (input_tokens, output_tokens) of the most recent completion, from
+        # usage_metadata. None until a call succeeds; consumed for observability.
+        self.last_usage: tuple[int, int] | None = None
 
     # ---- public API (mirrors LLMClient) ----
 
@@ -155,12 +158,18 @@ class GeminiClient:
             raise _map_gemini_error(exc) from exc
 
         # Remember why generation stopped — MAX_TOKENS truncation is the top
-        # suspect when JSON extraction fails on long derivations.
+        # suspect when JSON extraction fails on long derivations — and how
+        # much the call cost in tokens, for tracing/observability.
         candidates = getattr(response, "candidates", None) or []
         self._last_finish_reason = (
             _finish_reason_name(getattr(candidates[0], "finish_reason", None))
             if candidates else "none"
         )
+        usage_meta = getattr(response, "usage_metadata", None)
+        self.last_usage = (
+            int(getattr(usage_meta, "prompt_token_count", 0) or 0),
+            int(getattr(usage_meta, "candidates_token_count", 0) or 0),
+        ) if usage_meta is not None else None
 
         # Truncated mid-generation (= MAX_TOKENS): retry once with a doubled
         # budget. A cut-off JSON document is unparseable, so a bigger cap is

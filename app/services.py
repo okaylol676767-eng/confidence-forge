@@ -91,8 +91,10 @@ async def handle_chat(
     if settings.consistency_samples > 1 and looks_quantitative(request.message):
         vote = await consistency_solve(llm, messages, attachments=attachments)
         structured = vote.winner
+        token_usage: tuple[int, int] | None = vote.token_usage
     else:
         structured = await llm.chat_structured(messages, attachments=attachments)  # typed LLMError
+        token_usage = getattr(llm, "last_usage", None)
 
     latency_ms = int((time.perf_counter() - started) * 1000)
 
@@ -110,6 +112,7 @@ async def handle_chat(
         input_messages=[m for m in messages if m["role"] != "system"],
         answer=structured.answer,
         latency_ms=latency_ms,
+        token_usage=token_usage,
         conversation_id=conversation_id,
         interaction_id=str(row.id),
         confidence=structured.confidence,

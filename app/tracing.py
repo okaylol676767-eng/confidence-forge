@@ -77,6 +77,7 @@ def trace_chat_turn(
     input_messages: list[dict[str, str]],
     answer: str,
     latency_ms: int,
+    token_usage: tuple[int, int] | None = None,
     conversation_id: str,
     interaction_id: str | None = None,
     confidence: float | None = None,
@@ -105,6 +106,10 @@ def trace_chat_turn(
             input_messages=input_messages,
             output=answer,
             latency_ms=latency_ms,
+            # Real counts from the provider's usage block (summed across
+            # samples on the self-consistency path); 0s only when unknown.
+            token_count_input=(token_usage or (0, 0))[0],
+            token_count_output=(token_usage or (0, 0))[1],
             trace_id=interaction_id,
             agent_id=AGENT_ID,
             agent_name=AGENT_NAME,

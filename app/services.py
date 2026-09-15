@@ -101,9 +101,13 @@ async def handle_chat(
     )
 
     # PRISM live tracing: one record per chat turn (fire-and-forget, fail-open).
+    # The system prompt is deliberately NOT included: it is proprietary, and
+    # PRISM's content scanner was flagging every trace that carried it as
+    # "Blocked" (instruction-like text trips injection/DLP rules). Prompt
+    # identity still reaches PRISM via the prompt_version metadata field.
     trace_chat_turn(
         model=settings.llm_model_for_provider,
-        input_messages=messages,
+        input_messages=[m for m in messages if m["role"] != "system"],
         answer=structured.answer,
         latency_ms=latency_ms,
         conversation_id=conversation_id,

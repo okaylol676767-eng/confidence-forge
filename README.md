@@ -53,6 +53,9 @@ The key is loaded from `.env` via `python-dotenv` — never commit it (`.env` is
 | `LLM_TEMPERATURE` / `LLM_MAX_TOKENS` | `0.2` / `800` | Generation parameters |
 | `LLM_TIMEOUT_SECONDS` / `LLM_MAX_RETRIES` | `30` / `2` | Request timeout and retry count |
 | `LLM_JSON_MODE` | `true` | Request native JSON mode (disable for picky providers) |
+| `ANSWER_CACHE_ENABLED` | `true` | Serve identical repeat questions (no history/files) from an in-process cache — single-digit-ms responses |
+| `ANSWER_CACHE_SIZE` | `1024` | Max cached questions (LRU eviction) |
+| `ANSWER_CACHE_TTL_SECONDS` | `3600` | Cache entry lifetime |
 | `MAX_HISTORY_TURNS` | `10` | Previous exchanges replayed to the model |
 | `LOW_CONFIDENCE_THRESHOLD` | `0.7` | What counts as "low confidence" |
 | `IMPROVE_SAMPLE_LIMIT` | `200` | Max rows analyzed per `/improve` run |

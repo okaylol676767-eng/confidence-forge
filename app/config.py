@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     # Ask the API for native JSON mode; disable for providers that reject response_format.
     llm_json_mode: bool = True
 
+    # --- Answer cache (repeat questions served instantly) ---
+    answer_cache_enabled: bool = True
+    answer_cache_size: int = Field(default=1024, ge=1, le=100_000)
+    answer_cache_ttl_seconds: float = Field(default=3600.0, gt=0)
+
     # --- Chat behaviour ---
     max_history_turns: int = 10
     low_confidence_threshold: float = Field(default=0.7, ge=0.0, le=1.0)

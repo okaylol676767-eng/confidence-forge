@@ -15,6 +15,9 @@ os.environ["LLM_PROVIDER"] = "openai"
 os.environ.setdefault("OPENAI_API_KEY", "test-key")
 os.environ.setdefault("LLM_JSON_MODE", "false")
 os.environ.setdefault("LLM_MAX_RETRIES", "0")
+# Tests assert on per-turn LLM behavior; a cross-test answer cache would leak
+# state between them. Disabled for the suite (dedicated tests cover the cache).
+os.environ["ANSWER_CACHE_ENABLED"] = "false"
 
 import app.improve as improve_module  # noqa: E402
 import app.main as main_module  # noqa: E402

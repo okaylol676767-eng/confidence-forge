@@ -30,6 +30,7 @@ from .schemas import (
     StructuredAnswer,
 )
 from .tracing import trace_chat_turn
+from .answer_cache import answer_cache, cacheable_turn
 
 logger = get_logger("service")
 settings = get_settings()
@@ -84,6 +85,49 @@ async def handle_chat(
         raise
     prompt_version, system_prompt = await prompts.get_active()
 
+    # Exact-match answer cache: only context-free turns (no history, no files)
+    # may be served or stored, so a hit can never produce a wrong answer.
+    cache_key = None
+    if (
+        answer_cache is not None
+        and cacheable_turn(
+            message=request.message,
+            history_count=len(history),
+            attachment_count=len(attachments),
+        )
+    ):
+        cache_key = answer_cache.make_key(prompt_version, request.message)
+        cached = answer_cache.get(cache_key)
+        if cached is not None:
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            row = await save_interaction(
+                session, conversation_id, request, cached, latency_ms, prompt_version, attachments,
+            )
+            trace_chat_turn(
+                model=settings.llm_model_for_provider,
+                input_messages=[m for m in ([{"role": "user", "content": request.message}])],
+                answer=cached.answer,
+                latency_ms=latency_ms,
+                conversation_id=conversation_id,
+                interaction_id=str(row.id),
+                confidence=cached.confidence,
+                prompt_version=prompt_version,
+                uncertainty_factors=cached.uncertainty_factors,
+                attachment_count=0,
+            )
+            logger.info(
+                "chat conversation=%s latency_ms=%d confidence=%.2f version=%s CACHED",
+                conversation_id, latency_ms, cached.confidence, prompt_version,
+            )
+            return ChatResponse(
+                conversation_id=conversation_id,
+                interaction_id=row.id,
+                prompt_version=prompt_version,
+                latency_ms=latency_ms,
+                attachments=attachment_meta(attachments),
+                **cached.model_dump(),
+            )
+
     messages = build_chat_messages(system_prompt, history, request.message)
 
     # Quantitative questions get self-consistency: N independent solutions +
@@ -126,6 +170,8 @@ async def handle_chat(
         conversation_id, latency_ms, structured.confidence, prompt_version,
         len(structured.uncertainty_factors),
     )
+    if cache_key is not None and answer_cache is not None:
+        answer_cache.put(cache_key, structured, prompt_version)
     return ChatResponse(
         conversation_id=conversation_id,
         interaction_id=row.id,

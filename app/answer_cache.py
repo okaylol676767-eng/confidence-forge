@@ -36,6 +36,10 @@ def normalize_question(message: str) -> str:
 class _Entry:
     answer: StructuredAnswer
     prompt_version: str
+    # Provider-reported (input, output) tokens of the call that produced this
+    # answer. Replayed on hits so observability dashboards see the true cost
+    # of the turn even when it was served from cache.
+    token_usage: tuple[int, int] | None
     expires_at: float
 
 
@@ -53,7 +57,7 @@ class AnswerCache:
     def make_key(prompt_version: str, message: str) -> str:
         return f"{prompt_version}::{normalize_question(message)}"
 
-    def get(self, key: str) -> StructuredAnswer | None:
+    def get(self, key: str) -> tuple[StructuredAnswer, tuple[int, int] | None] | None:
         entry = self._entries.get(key)
         if entry is None:
             self.misses += 1
@@ -65,12 +69,19 @@ class AnswerCache:
             return None
         self._entries.move_to_end(key)  # LRU refresh
         self.hits += 1
-        return entry.answer
+        return entry.answer, entry.token_usage
 
-    def put(self, key: str, answer: StructuredAnswer, prompt_version: str) -> None:
+    def put(
+        self,
+        key: str,
+        answer: StructuredAnswer,
+        prompt_version: str,
+        token_usage: tuple[int, int] | None = None,
+    ) -> None:
         self._entries[key] = _Entry(
             answer=answer,
             prompt_version=prompt_version,
+            token_usage=token_usage,
             expires_at=time.monotonic() + self._ttl,
         )
         self._entries.move_to_end(key)

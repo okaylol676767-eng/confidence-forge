@@ -99,25 +99,27 @@ async def handle_chat(
         cache_key = answer_cache.make_key(prompt_version, request.message)
         cached = answer_cache.get(cache_key)
         if cached is not None:
+            cached_answer, cached_tokens = cached
             latency_ms = int((time.perf_counter() - started) * 1000)
             row = await save_interaction(
-                session, conversation_id, request, cached, latency_ms, prompt_version, attachments,
+                session, conversation_id, request, cached_answer, latency_ms, prompt_version, attachments,
             )
             trace_chat_turn(
                 model=settings.llm_model_for_provider,
                 input_messages=[m for m in ([{"role": "user", "content": request.message}])],
-                answer=cached.answer,
+                answer=cached_answer.answer,
                 latency_ms=latency_ms,
+                token_usage=cached_tokens,
                 conversation_id=conversation_id,
                 interaction_id=str(row.id),
-                confidence=cached.confidence,
+                confidence=cached_answer.confidence,
                 prompt_version=prompt_version,
-                uncertainty_factors=cached.uncertainty_factors,
+                uncertainty_factors=cached_answer.uncertainty_factors,
                 attachment_count=0,
             )
             logger.info(
                 "chat conversation=%s latency_ms=%d confidence=%.2f version=%s CACHED",
-                conversation_id, latency_ms, cached.confidence, prompt_version,
+                conversation_id, latency_ms, cached_answer.confidence, prompt_version,
             )
             return ChatResponse(
                 conversation_id=conversation_id,
@@ -125,7 +127,7 @@ async def handle_chat(
                 prompt_version=prompt_version,
                 latency_ms=latency_ms,
                 attachments=attachment_meta(attachments),
-                **cached.model_dump(),
+                **cached_answer.model_dump(),
             )
 
     messages = build_chat_messages(system_prompt, history, request.message)
@@ -171,7 +173,7 @@ async def handle_chat(
         len(structured.uncertainty_factors),
     )
     if cache_key is not None and answer_cache is not None:
-        answer_cache.put(cache_key, structured, prompt_version)
+        answer_cache.put(cache_key, structured, prompt_version, token_usage)
     return ChatResponse(
         conversation_id=conversation_id,
         interaction_id=row.id,
